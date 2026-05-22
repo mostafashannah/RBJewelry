@@ -33,10 +33,15 @@ export async function POST(req: NextRequest) {
   });
 
   for (const entry of payload.entry ?? []) {
+    // Instagram DMs come via entry.messaging[]
+    for (const msg of entry.messaging ?? []) {
+      if (msg.message && !msg.message.is_echo) {
+        await handleDM(msg);
+      }
+    }
+    // Comments and other events come via entry.changes[]
     for (const change of entry.changes ?? []) {
-      if (change.field === "messages") {
-        await handleDM(change.value);
-      } else if (change.field === "comments") {
+      if (change.field === "comments") {
         await handleComment(change.value);
       }
     }
@@ -47,8 +52,8 @@ export async function POST(req: NextRequest) {
 
 async function handleDM(value: Record<string, unknown>) {
   const sender = (value.sender as { id: string })?.id;
-  const msg = value.message as { mid?: string; text?: string } | undefined;
-  if (!sender || !msg?.text) return;
+  const msg = value.message as { mid?: string; text?: string; is_echo?: boolean } | undefined;
+  if (!sender || !msg?.text || msg.is_echo) return;
 
   const conversation = await db.conversation.upsert({
     where: { platform_externalId: { platform: Platform.INSTAGRAM_DM, externalId: sender } },
