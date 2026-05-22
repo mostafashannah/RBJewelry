@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Platform {
+  INSTAGRAM_DM
+  INSTAGRAM_COMMENT
+  WHATSAPP
+}
+
+enum Direction {
+  INBOUND
+  OUTBOUND
+}
+
+enum ConversationStatus {
+  OPEN
+  RESOLVED
+  SNOOZED
+}
+
+enum WebhookSource {
+  META
+  SHOPIFY
+}
+
+model Conversation {
+  id            String             @id @default(cuid())
+  platform      Platform
+  externalId    String
+  displayName   String?
+  avatarUrl     String?
+  lastMessageAt DateTime           @default(now())
+  unreadCount   Int                @default(0)
+  status        ConversationStatus @default(OPEN)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  messages  Message[]
+  aiReplies AiReply[]
+
+  @@unique([platform, externalId])
+  @@index([lastMessageAt])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  direction      Direction
+  body           String       @db.Text
+  mediaUrl       String?
+  externalMsgId  String?      @unique
+  sentAt         DateTime     @default(now())
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  isAiGenerated  Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  aiReply AiReply?
+
+  @@index([conversationId, sentAt])
+}
+
+model AiReply {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  messageId      String       @unique
+  message        Message      @relation(fields: [messageId], references: [id])
+  prompt         String       @db.Text
+  rawResponse    String       @db.Text
+  finalReply     String       @db.Text
+  model          String       @default("claude-sonnet-4-6")
+  inputTokens    Int          @default(0)
+  outputTokens   Int          @default(0)
+  processingMs   Int          @default(0)
+  createdAt      DateTime     @default(now())
+}
+
+model AiConfig {
+  id               String     @id @default(cuid())
+  systemPrompt     String     @db.Text
+  autoReplyEnabled Boolean    @default(true)
+  platforms        Platform[]
+  maxTokens        Int        @default(400)
+  temperature      Float      @default(0.7)
+  updatedAt        DateTime   @updatedAt
+  createdAt        DateTime   @default(now())
+}
+
+model InstagramComment {
+  id           String   @id @default(cuid())
+  commentId    String   @unique
+  mediaId      String
+  fromUserId   String
+  fromUsername String?
+  body         String   @db.Text
+  repliedTo    Boolean  @default(false)
+  replyId      String?
+  createdAt    DateTime @default(now())
+
+  @@index([mediaId])
+}
+
+model ShopifyProductCache {
+  id          String   @id
+  handle      String   @unique
+  title       String
+  description String   @db.Text
+  priceMin    Float
+  priceMax    Float
+  currency    String   @default("EGP")
+  imageUrl    String?
+  tags        String[]
+  available   Boolean  @default(true)
+  rawJson     Json
+  syncedAt    DateTime @default(now())
+
+  @@index([available])
+}
+
+model ShopifyOrderCache {
+  id            String   @id
+  orderNumber   String
+  customerEmail String?
+  customerPhone String?
+  totalPrice    Float
+  currency      String
+  status        String
+  lineItemsJson Json
+  createdAt     DateTime
+  syncedAt      DateTime @default(now())
+
+  @@index([customerPhone])
+  @@index([customerEmail])
+}
+
+model WebhookEvent {
+  id           String        @id @default(cuid())
+  source       WebhookSource
+  eventType    String
+  payload      Json
+  processed    Boolean       @default(false)
+  errorMessage String?
+  receivedAt   DateTime      @default(now())
+
+  @@index([source, receivedAt])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  keys      Json
+  createdAt DateTime @default(now())
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  category    String
+  amount      Float
+  currency    String   @default("EGP")
+  description String?
+  date        DateTime
+  createdAt   DateTime @default(now())
+}
