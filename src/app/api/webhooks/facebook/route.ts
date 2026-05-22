@@ -1,0 +1,117 @@
+export const dynamic = "force-dynamic";
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { verifyMetaSignature, verifyWebhookToken } from "@/lib/meta/webhook-verify";
+import { processInboundMessage } from "@/lib/ai/agent";
+import { Platform, Direction } from "@prisma/client";
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = req.nextUrl;
+  const mode = searchParams.get("hub.mode");
+  const token = searchParams.get("hub.verify_token");
+  const challenge = searchParams.get("hub.challenge");
+
+  if (mode === "subscribe" && token && verifyWebhookToken(token)) {
+    return new NextResponse(challenge, { status: 200 });
+  }
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+}
+
+export async function POST(req: NextRequest) {
+  const ab = await req.arrayBuffer();
+  const rawBody = Buffer.from(ab);
+  const signature = req.headers.get("x-hub-signature-256") ?? "";
+
+  if (process.env.NODE_ENV === "production" && !verifyMetaSignature(rawBody, signature)) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+
+  const payload = JSON.parse(rawBody.toString("utf-8"));
+
+  await db.webhookEvent.create({
+    data: { source: "META", eventType: "facebook", payload, processed: false },
+  });
+
+  for (const entry of payload.entry ?? []) {
+    // Facebook Messenger DMs
+    for (const msg of entry.messaging ?? []) {
+      if (msg.message && !msg.message.is_echo) {
+        await handleFacebookDM(msg);
+      }
+    }
+    // Facebook Page comments
+    for (const change of entry.changes ?? []) {
+      if (change.field === "feed" && change.value?.item === "comment") {
+        await handleFacebookComment(change.value);
+      }
+    }
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
+async function handleFacebookDM(value: Record<string, unknown>) {
+  const sender = (value.sender as { id: string })?.id;
+  const msg = value.message as { mid?: string; text?: string } | undefined;
+  if (!sender || !msg?.text) return;
+
+  // Ignore messages from the page itself
+  const pageId = process.env.META_PAGE_ID;
+  if (sender === pageId) return;
+
+  const conversation = await db.conversation.upsert({
+    where: { platform_externalId: { platform: Platform.FACEBOOK_DM, externalId: sender } },
+    update: { lastMessageAt: new Date(), unreadCount: { increment: 1 } },
+    create: { platform: Platform.FACEBOOK_DM, externalId: sender, unreadCount: 1 },
+  });
+
+  if (msg.mid) {
+    const exists = await db.message.findUnique({ where: { externalMsgId: msg.mid } });
+    if (exists) return;
+  }
+
+  const message = await db.message.create({
+    data: {
+      conversationId: conversation.id,
+      direction: Direction.INBOUND,
+      body: msg.text,
+      externalMsgId: msg.mid ?? null,
+    },
+  });
+
+  processInboundMessage(conversation.id, message.id).catch(console.error);
+}
+
+async function handleFacebookComment(value: Record<string, unknown>) {
+  const commentId = value.comment_id as string ?? value.id as string;
+  const postId = value.post_id as string ?? "";
+  const fromId = (value.from as { id: string })?.id ?? "";
+  const text = value.message as string;
+
+  if (!commentId || !text) return;
+
+  const conversation = await db.conversation.upsert({
+    where: { platform_externalId: { platform: Platform.FACEBOOK_COMMENT, externalId: commentId } },
+    update: { lastMessageAt: new Date(), unreadCount: { increment: 1 } },
+    create: {
+      platform: Platform.FACEBOOK_COMMENT,
+      externalId: commentId,
+      customerId: fromId,
+      unreadCount: 1,
+    },
+  });
+
+  const exists = await db.message.findUnique({ where: { externalMsgId: commentId } });
+  if (exists) return;
+
+  const message = await db.message.create({
+    data: {
+      conversationId: conversation.id,
+      direction: Direction.INBOUND,
+      body: text,
+      externalMsgId: commentId,
+    },
+  });
+
+  processInboundMessage(conversation.id, message.id).catch(console.error);
+}

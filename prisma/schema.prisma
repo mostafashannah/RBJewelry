@@ -11,6 +11,8 @@ enum Platform {
   INSTAGRAM_DM
   INSTAGRAM_COMMENT
   WHATSAPP
+  FACEBOOK_DM
+  FACEBOOK_COMMENT
 }
 
 enum Direction {

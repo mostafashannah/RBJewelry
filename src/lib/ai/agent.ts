@@ -4,6 +4,7 @@ import { getProductContextString } from "./product-context";
 import { buildSystemPrompt } from "./system-prompt";
 import { sendInstagramDM, replyToInstagramComment } from "@/lib/meta/instagram";
 import { sendWhatsAppMessage } from "@/lib/meta/whatsapp";
+import { sendFacebookDM, replyToFacebookComment } from "@/lib/meta/facebook";
 import { Platform, Direction } from "@prisma/client";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
@@ -81,6 +82,10 @@ export async function processInboundMessage(conversationId: string, inboundMessa
       await replyToInstagramComment(conversation.externalId, replyText);
     } else if (conversation.platform === Platform.WHATSAPP) {
       await sendWhatsAppMessage(conversation.externalId, replyText);
+    } else if (conversation.platform === Platform.FACEBOOK_DM) {
+      await sendFacebookDM(conversation.externalId, replyText);
+    } else if (conversation.platform === Platform.FACEBOOK_COMMENT) {
+      await replyToFacebookComment(conversation.externalId, replyText);
     }
 
     await db.message.update({
