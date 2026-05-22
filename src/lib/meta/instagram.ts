@@ -1,7 +1,8 @@
 import { graphPost } from "./graph-api";
 
 export async function sendInstagramDM(recipientId: string, text: string) {
-  return graphPost(`/me/messages`, {
+  const igAccountId = process.env.META_INSTAGRAM_BUSINESS_ACCOUNT_ID!;
+  return graphPost(`/${igAccountId}/messages`, {
     recipient: { id: recipientId },
     message: { text },
     messaging_type: "RESPONSE",
