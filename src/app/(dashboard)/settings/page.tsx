@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { RefreshCw, Save } from "lucide-react";
+import { Eye, EyeOff, RefreshCw, Save } from "lucide-react";
 
 interface AiConfig {
   id: string;
@@ -9,6 +9,86 @@ interface AiConfig {
   platforms: string[];
   maxTokens: number;
   temperature: number;
+}
+
+// ── Connections ──────────────────────────────────────────────────────────────
+
+interface ConnectionStatus {
+  SHOPIFY_STORE_DOMAIN: boolean;
+  SHOPIFY_ADMIN_API_ACCESS_TOKEN: boolean;
+  META_PAGE_ACCESS_TOKEN: boolean;
+  META_APP_SECRET: boolean;
+  META_INSTAGRAM_BUSINESS_ACCOUNT_ID: boolean;
+  META_WHATSAPP_PHONE_NUMBER_ID: boolean;
+}
+
+interface ConnectionValues {
+  SHOPIFY_STORE_DOMAIN: string;
+  SHOPIFY_ADMIN_API_ACCESS_TOKEN: string;
+  META_PAGE_ACCESS_TOKEN: string;
+  META_APP_SECRET: string;
+  META_INSTAGRAM_BUSINESS_ACCOUNT_ID: string;
+  META_WHATSAPP_PHONE_NUMBER_ID: string;
+}
+
+const EMPTY_CONNECTIONS: ConnectionValues = {
+  SHOPIFY_STORE_DOMAIN: "",
+  SHOPIFY_ADMIN_API_ACCESS_TOKEN: "",
+  META_PAGE_ACCESS_TOKEN: "",
+  META_APP_SECRET: "",
+  META_INSTAGRAM_BUSINESS_ACCOUNT_ID: "",
+  META_WHATSAPP_PHONE_NUMBER_ID: "",
+};
+
+function StatusBadge({ set }: { set: boolean }) {
+  return set ? (
+    <span className="text-xs text-green-600 font-medium">Connected ✓</span>
+  ) : (
+    <span className="text-xs text-zinc-400">Not set</span>
+  );
+}
+
+function ConnectionField({
+  label,
+  envKey,
+  placeholder,
+  isSet,
+  value,
+  onChange,
+}: {
+  label: string;
+  envKey: keyof ConnectionValues;
+  placeholder: string;
+  isSet: boolean;
+  value: string;
+  onChange: (key: keyof ConnectionValues, val: string) => void;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-medium text-zinc-500">{label}</label>
+        <StatusBadge set={isSet} />
+      </div>
+      <div className="relative">
+        <input
+          type={show ? "text" : "password"}
+          placeholder={isSet ? "••••••••••••  (leave blank to keep current)" : placeholder}
+          value={value}
+          onChange={(e) => onChange(envKey, e.target.value)}
+          className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm pr-10 focus:outline-none focus:border-zinc-400 placeholder:text-zinc-300"
+        />
+        <button
+          type="button"
+          onClick={() => setShow((s) => !s)}
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+          tabIndex={-1}
+        >
+          {show ? <EyeOff size={14} /> : <Eye size={14} />}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 const ALL_PLATFORMS = [
@@ -34,10 +114,45 @@ export default function SettingsPage() {
   const [syncMsg, setSyncMsg] = useState("");
   const [appUrl, setAppUrl] = useState("");
 
+  // Connections
+  const [connStatus, setConnStatus] = useState<ConnectionStatus | null>(null);
+  const [connValues, setConnValues] = useState<ConnectionValues>(EMPTY_CONNECTIONS);
+  const [connSaving, setConnSaving] = useState(false);
+  const [connMsg, setConnMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
   useEffect(() => {
     fetch("/api/ai/config").then((r) => r.json()).then(setConfig);
     setAppUrl(window.location.origin);
+    fetch("/api/settings/connections")
+      .then((r) => r.json())
+      .then((d) => setConnStatus(d.status ?? null));
   }, []);
+
+  const updateConn = (key: keyof ConnectionValues, val: string) =>
+    setConnValues((prev) => ({ ...prev, [key]: val }));
+
+  const saveConnections = async () => {
+    setConnSaving(true);
+    setConnMsg(null);
+    const res = await fetch("/api/settings/connections", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(connValues),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setConnMsg({ ok: true, text: data.message });
+      // Refresh status
+      fetch("/api/settings/connections")
+        .then((r) => r.json())
+        .then((d) => setConnStatus(d.status ?? null));
+      setConnValues(EMPTY_CONNECTIONS);
+    } else {
+      setConnMsg({ ok: false, text: data.error ?? "Save failed." });
+    }
+    setConnSaving(false);
+    setTimeout(() => setConnMsg(null), 6000);
+  };
 
   const save = async () => {
     if (!config) return;
@@ -214,6 +329,99 @@ export default function SettingsPage() {
           ))}
         </div>
         <p className="text-xs text-zinc-400 mt-3">Click any URL to copy it.</p>
+      </div>
+
+      {/* Connections */}
+      <div className="bg-white border border-zinc-100 rounded-xl p-6">
+        <h2 className="text-sm font-semibold text-zinc-900 mb-1">Connections</h2>
+        <p className="text-xs text-zinc-500 mb-5">
+          Enter API credentials below. Values are saved to <code className="bg-zinc-50 px-1 rounded">.env.local</code>.
+          Restart the server after saving for changes to take effect.
+        </p>
+
+        {/* Shopify */}
+        <div className="mb-5 pb-5 border-b border-zinc-50">
+          <p className="text-xs font-semibold text-zinc-700 mb-3">Shopify</p>
+          <div className="space-y-3">
+            <ConnectionField
+              label="Store Domain"
+              envKey="SHOPIFY_STORE_DOMAIN"
+              placeholder="your-store.myshopify.com"
+              isSet={connStatus?.SHOPIFY_STORE_DOMAIN ?? false}
+              value={connValues.SHOPIFY_STORE_DOMAIN}
+              onChange={updateConn}
+            />
+            <ConnectionField
+              label="Admin API Token"
+              envKey="SHOPIFY_ADMIN_API_ACCESS_TOKEN"
+              placeholder="shpat_..."
+              isSet={connStatus?.SHOPIFY_ADMIN_API_ACCESS_TOKEN ?? false}
+              value={connValues.SHOPIFY_ADMIN_API_ACCESS_TOKEN}
+              onChange={updateConn}
+            />
+          </div>
+        </div>
+
+        {/* Meta / Facebook */}
+        <div className="mb-5 pb-5 border-b border-zinc-50">
+          <p className="text-xs font-semibold text-zinc-700 mb-3">Meta / Facebook</p>
+          <div className="space-y-3">
+            <ConnectionField
+              label="Page Access Token"
+              envKey="META_PAGE_ACCESS_TOKEN"
+              placeholder="EAAOQAg..."
+              isSet={connStatus?.META_PAGE_ACCESS_TOKEN ?? false}
+              value={connValues.META_PAGE_ACCESS_TOKEN}
+              onChange={updateConn}
+            />
+            <ConnectionField
+              label="App Secret"
+              envKey="META_APP_SECRET"
+              placeholder="App secret from Meta developer console"
+              isSet={connStatus?.META_APP_SECRET ?? false}
+              value={connValues.META_APP_SECRET}
+              onChange={updateConn}
+            />
+            <ConnectionField
+              label="Instagram Business Account ID"
+              envKey="META_INSTAGRAM_BUSINESS_ACCOUNT_ID"
+              placeholder="1234567890"
+              isSet={connStatus?.META_INSTAGRAM_BUSINESS_ACCOUNT_ID ?? false}
+              value={connValues.META_INSTAGRAM_BUSINESS_ACCOUNT_ID}
+              onChange={updateConn}
+            />
+          </div>
+        </div>
+
+        {/* WhatsApp */}
+        <div className="mb-5">
+          <p className="text-xs font-semibold text-zinc-700 mb-3">WhatsApp</p>
+          <div className="space-y-3">
+            <ConnectionField
+              label="Phone Number ID"
+              envKey="META_WHATSAPP_PHONE_NUMBER_ID"
+              placeholder="1234567890"
+              isSet={connStatus?.META_WHATSAPP_PHONE_NUMBER_ID ?? false}
+              value={connValues.META_WHATSAPP_PHONE_NUMBER_ID}
+              onChange={updateConn}
+            />
+          </div>
+        </div>
+
+        {connMsg && (
+          <p className={`text-xs mb-3 ${connMsg.ok ? "text-green-700" : "text-red-600"}`}>
+            {connMsg.text}
+          </p>
+        )}
+
+        <button
+          onClick={saveConnections}
+          disabled={connSaving}
+          className="flex items-center gap-2 text-sm px-4 py-2 bg-zinc-900 text-white rounded-lg hover:bg-zinc-700 disabled:opacity-40 transition-colors"
+        >
+          <Save size={14} />
+          {connSaving ? "Saving…" : "Save Connections"}
+        </button>
       </div>
     </div>
   );
