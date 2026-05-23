@@ -2,12 +2,58 @@ import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/lib/db";
 import { getProductContextString } from "./product-context";
 import { buildSystemPrompt } from "./system-prompt"; // fallback if no DB prompt
-import { sendInstagramDM, replyToInstagramComment } from "@/lib/meta/instagram";
-import { sendWhatsAppMessage } from "@/lib/meta/whatsapp";
-import { sendFacebookDM, replyToFacebookComment } from "@/lib/meta/facebook";
+import { sendInstagramDM, sendInstagramImage, replyToInstagramComment } from "@/lib/meta/instagram";
+import { sendWhatsAppMessage, sendWhatsAppImage } from "@/lib/meta/whatsapp";
+import { sendFacebookDM, sendFacebookImage, replyToFacebookComment } from "@/lib/meta/facebook";
 import { Platform, Direction } from "@prisma/client";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+
+// Tool definition — lets the AI send a product photo
+const TOOLS: Anthropic.Tool[] = [
+  {
+    name: "send_product_image",
+    description:
+      "Send a product photo to the customer. Use this when a customer asks to see a product, requests photos, or when showing the product would help them decide. Only call this for DM platforms (not comments).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        product_name: {
+          type: "string",
+          description: "The name or partial name of the product to show (e.g. 'Wave Ring', 'Trio Stone')",
+        },
+        caption: {
+          type: "string",
+          description: "A short caption to send with the image (price, sizes, one-liner). Max 100 chars.",
+        },
+      },
+      required: ["product_name"],
+    },
+  },
+];
+
+async function findProductImage(productName: string): Promise<{ imageUrl: string; title: string; price: string } | null> {
+  const name = productName.toLowerCase();
+  const products = await db.shopifyProductCache.findMany({ where: { available: true } });
+  const match = products.find((p) => p.title.toLowerCase().includes(name)) ?? products[0];
+  if (!match?.imageUrl) return null;
+  const price = match.priceMin === match.priceMax
+    ? `${match.priceMin} EGP`
+    : `${match.priceMin}–${match.priceMax} EGP`;
+  return { imageUrl: match.imageUrl, title: match.title, price };
+}
+
+async function sendImage(platform: Platform, externalId: string, imageUrl: string, caption: string) {
+  if (platform === Platform.WHATSAPP) {
+    await sendWhatsAppImage(externalId, imageUrl, caption);
+  } else if (platform === Platform.INSTAGRAM_DM) {
+    await sendInstagramImage(externalId, imageUrl);
+    if (caption) await sendInstagramDM(externalId, caption);
+  } else if (platform === Platform.FACEBOOK_DM) {
+    await sendFacebookImage(externalId, imageUrl, caption);
+  }
+  // Comments don't support images — silently skip
+}
 
 export async function processInboundMessage(conversationId: string, inboundMessageId: string) {
   const startMs = Date.now();
@@ -40,17 +86,57 @@ export async function processInboundMessage(conversationId: string, inboundMessa
     messages.push({ role: "user", content: inboundMsg.body });
   }
 
+  // Only offer image tool for DM platforms
+  const canSendImages = [Platform.WHATSAPP, Platform.INSTAGRAM_DM, Platform.FACEBOOK_DM].includes(
+    conversation.platform
+  );
+
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: config.maxTokens ?? 400,
     system: systemPrompt,
     messages,
+    tools: canSendImages ? TOOLS : [],
+    tool_choice: canSendImages ? { type: "auto" } : undefined,
   });
 
-  const replyText = response.content[0].type === "text" ? response.content[0].text : "";
-  if (!replyText) return;
+  // Handle tool use (send product image)
+  let imageSent = false;
+  for (const block of response.content) {
+    if (block.type === "tool_use" && block.name === "send_product_image") {
+      const input = block.input as { product_name: string; caption?: string };
+      const product = await findProductImage(input.product_name);
+      if (product) {
+        const caption = input.caption ?? `${product.title} — ${product.price}`;
+        try {
+          await sendImage(conversation.platform, conversation.externalId, product.imageUrl, caption);
+          imageSent = true;
+          // Save image message to DB
+          await db.message.create({
+            data: {
+              conversationId,
+              direction: Direction.OUTBOUND,
+              body: `[Image] ${product.title} — ${caption}`,
+              isAiGenerated: true,
+              deliveredAt: new Date(),
+            },
+          });
+        } catch (err) {
+          console.error("Failed to send product image:", err);
+        }
+      }
+    }
+  }
 
-  // Save outbound message
+  // Extract text reply
+  const replyText = response.content.find((b) => b.type === "text")?.text ?? "";
+  if (!replyText && !imageSent) return;
+  if (!replyText) {
+    await db.conversation.update({ where: { id: conversationId }, data: { lastMessageAt: new Date(), unreadCount: 0 } });
+    return;
+  }
+
+  // Save outbound text message
   const outbound = await db.message.create({
     data: {
       conversationId,
@@ -60,7 +146,6 @@ export async function processInboundMessage(conversationId: string, inboundMessa
     },
   });
 
-  // Save AI reply audit record
   await db.aiReply.create({
     data: {
       conversationId,
@@ -75,7 +160,6 @@ export async function processInboundMessage(conversationId: string, inboundMessa
     },
   });
 
-  // Send reply via appropriate platform
   try {
     if (conversation.platform === Platform.INSTAGRAM_DM) {
       await sendInstagramDM(conversation.externalId, replyText);
@@ -89,15 +173,11 @@ export async function processInboundMessage(conversationId: string, inboundMessa
       await replyToFacebookComment(conversation.externalId, replyText);
     }
 
-    await db.message.update({
-      where: { id: outbound.id },
-      data: { deliveredAt: new Date() },
-    });
+    await db.message.update({ where: { id: outbound.id }, data: { deliveredAt: new Date() } });
   } catch (err) {
     console.error("Failed to send AI reply:", err);
   }
 
-  // Update conversation metadata
   await db.conversation.update({
     where: { id: conversationId },
     data: { lastMessageAt: new Date(), unreadCount: 0 },

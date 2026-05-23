@@ -12,6 +12,16 @@ export async function sendWhatsAppMessage(to: string, text: string) {
   });
 }
 
+export async function sendWhatsAppImage(to: string, imageUrl: string, caption?: string) {
+  return graphPost(`/${PHONE_NUMBER_ID}/messages`, {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: "image",
+    image: { link: imageUrl, caption: caption ?? "" },
+  });
+}
+
 export async function markWhatsAppRead(messageId: string) {
   return graphPost(`/${PHONE_NUMBER_ID}/messages`, {
     messaging_product: "whatsapp",
@@ -19,3 +29,4 @@ export async function markWhatsAppRead(messageId: string) {
     message_id: messageId,
   });
 }
+
