@@ -66,8 +66,14 @@ export async function processInboundMessage(conversationId: string, inboundMessa
   if (!conversation) return;
 
   const config = await db.aiConfig.findFirst();
-  if (!config?.autoReplyEnabled) return;
-  if (!config.platforms.includes(conversation.platform)) return;
+  if (!config?.autoReplyEnabled) {
+    console.log("[AI] Auto-reply disabled in config");
+    return;
+  }
+  if (!config.platforms.includes(conversation.platform)) {
+    console.log(`[AI] Platform ${conversation.platform} not in enabled list:`, config.platforms);
+    return;
+  }
 
   const productContext = await getProductContextString();
   // Always use DB prompt if set, otherwise use the default. Always append CORE_RULES and product context.
