@@ -15,7 +15,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "send_product_image",
     description:
-      "Send a product photo to the customer. Use this when a customer asks to see a product, requests photos, or when showing the product would help them decide. Only call this for DM platforms (not comments).",
+      "Send ONE product photo to the customer. Call this tool once per product — do NOT batch multiple products in one call. If showing multiple products, call this tool separately for each one, sending them one at a time. Only use for DM platforms (not comments).",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -189,7 +189,8 @@ export async function processInboundMessage(conversationId: string, inboundMessa
         if (product) {
           const caption = input.caption ?? `${product.title} — ${product.price}`;
           try {
-            await sendImage(conversation.platform, conversation.externalId, product.imageUrl, caption);
+            if (imageSent) await new Promise((r) => setTimeout(r, 800)); // space out multiple images
+          await sendImage(conversation.platform, conversation.externalId, product.imageUrl, caption);
             imageSent = true;
             await db.message.create({
               data: {
