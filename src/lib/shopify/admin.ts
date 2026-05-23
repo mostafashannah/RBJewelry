@@ -20,7 +20,7 @@ async function shopifyFetch<T>(path: string, options?: RequestInit): Promise<T> 
 }
 
 export async function getProducts(limit = 50, pageInfo?: string) {
-  const params = new URLSearchParams({ limit: String(limit), fields: "id,title,handle,status,variants,images,tags,product_type,vendor" });
+  const params = new URLSearchParams({ limit: String(limit), fields: "id,title,handle,status,body_html,variants,images,tags,product_type,vendor" });
   if (pageInfo) params.set("page_info", pageInfo);
   return shopifyFetch<{ products: ShopifyProduct[] }>(`/products.json?${params}`);
 }
