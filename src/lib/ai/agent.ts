@@ -215,12 +215,14 @@ export async function processInboundMessage(conversationId: string, inboundMessa
     // Second call to get Claude's text reply after tool execution
     const followUp = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: config.maxTokens ?? 400,
+      max_tokens: Math.max(config.maxTokens ?? 400, 300),
       system: systemPrompt,
       messages: [
         ...messages,
         { role: "assistant" as const, content: firstResponse.content },
         { role: "user" as const, content: toolResults },
+        // Nudge Claude to always send a follow-up text with CTA
+        { role: "user" as const, content: "Now send a short friendly follow-up text message (in the same language the customer used) — 1-2 sentences max, and end with your CTA." },
       ],
     });
     replyText = followUp.content.find((b) => b.type === "text")?.text ?? "";
