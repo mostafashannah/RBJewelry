@@ -128,11 +128,13 @@ export async function processInboundMessage(conversationId: string, inboundMessa
   const basePrompt = config.systemPrompt || buildSystemPrompt(productContext);
   const systemPrompt = [basePrompt, CORE_RULES, productContext].filter(Boolean).join("\n\n");
 
-  // Build conversation history — skip the current inbound message (added below) and
-  // skip [Image] outbound records (metadata-only, not actual text replies).
-  // Merge consecutive same-role messages to satisfy Anthropic's alternating-turn requirement.
+  // Build conversation history — skip the current inbound message (added below),
+  // skip [Image] outbound records, and scrub outbound messages that contain WhatsApp
+  // redirects so Claude doesn't learn to repeat that bad pattern.
   const rawHistory = conversation.messages.filter(
-    (m) => m.id !== inboundMessageId && !(m.direction === Direction.OUTBOUND && m.body.startsWith("[Image]"))
+    (m) => m.id !== inboundMessageId &&
+      !(m.direction === Direction.OUTBOUND && m.body.startsWith("[Image]")) &&
+      !(m.direction === Direction.OUTBOUND && (m.body.includes("wa.me") || m.body.includes("واتساب") && m.body.includes("تواصل")))
   );
   const messages: Anthropic.MessageParam[] = [];
   for (const m of rawHistory) {
@@ -301,7 +303,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
         { role: "assistant" as const, content: firstResponse.content },
         { role: "user" as const, content: toolResults },
         // Nudge Claude to always send a follow-up text with CTA
-        { role: "user" as const, content: "Now send a short friendly reply (in the same language the customer used) based on the information above — 1-2 sentences max, end with your CTA. Do NOT say you cannot help, do NOT redirect to WhatsApp or any other channel." },
+        { role: "user" as const, content: "Now send a short friendly reply (in the same language the customer used) based on the information above — 1-2 sentences max, end with your CTA. STRICT: do NOT mention WhatsApp, do NOT share any phone number or link, do NOT redirect to any channel. Handle it yourself." },
       ],
     });
     replyText = followUp.content.find((b) => b.type === "text")?.text ?? "";
