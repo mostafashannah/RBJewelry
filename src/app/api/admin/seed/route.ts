@@ -29,13 +29,10 @@ const products = [
 
 export async function POST() {
   try {
+    await db.shopifyProductCache.deleteMany({});
     let count = 0;
     for (const p of products) {
-      await db.shopifyProductCache.upsert({
-        where: { id: p.id },
-        update: { ...p, syncedAt: new Date() },
-        create: { ...p, syncedAt: new Date() },
-      });
+      await db.shopifyProductCache.create({ data: { ...p, syncedAt: new Date() } });
       count++;
     }
     return NextResponse.json({ ok: true, synced: count, message: `${count} products seeded successfully` });
