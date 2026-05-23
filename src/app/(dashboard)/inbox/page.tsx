@@ -119,7 +119,7 @@ export default function InboxPage() {
         <div className="p-4 border-b border-zinc-100">
           <h1 className="text-sm font-semibold text-zinc-900 mb-3">Inbox</h1>
           <div className="flex gap-1">
-            {["all", "INSTAGRAM_DM", "FACEBOOK_DM", "FACEBOOK_COMMENT", "WHATSAPP"].map((f) => (
+            {["all", "INSTAGRAM_DM", "INSTAGRAM_COMMENT", "FACEBOOK_DM", "FACEBOOK_COMMENT", "WHATSAPP"].map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
