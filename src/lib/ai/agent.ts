@@ -62,12 +62,14 @@ export async function processInboundMessage(conversationId: string, inboundMessa
 
   const conversation = await db.conversation.findUnique({
     where: { id: conversationId },
-    include: { messages: { orderBy: { sentAt: "asc" }, take: 20 } },
+    include: { messages: { orderBy: { sentAt: "desc" }, take: 20 } },
   });
   if (!conversation) {
     console.log("[AI] Conversation not found, skipping");
     return;
   }
+  // Reverse so messages are in chronological order (oldest first)
+  conversation.messages.reverse();
 
   const config = await db.aiConfig.findFirst();
   if (!config?.autoReplyEnabled) {
