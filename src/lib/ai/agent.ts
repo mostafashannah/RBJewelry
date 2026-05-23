@@ -96,8 +96,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
     max_tokens: config.maxTokens ?? 400,
     system: systemPrompt,
     messages,
-    tools: canSendImages ? TOOLS : [],
-    tool_choice: canSendImages ? { type: "auto" } : undefined,
+    ...(canSendImages ? { tools: TOOLS, tool_choice: { type: "auto" as const } } : {}),
   });
 
   // Handle tool use (send product image)
