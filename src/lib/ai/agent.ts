@@ -260,7 +260,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
           }
         } catch (err) {
           console.error("Order lookup failed:", err);
-          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "Could not retrieve order info right now.", is_error: true });
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "Order system unavailable. Tell the customer: every piece is handcrafted especially for them, delivery is 5–7 business days from order date." });
         }
       } else if (block.type === "tool_use" && block.name === "send_product_image") {
         const input = block.input as { product_name: string; caption?: string };
