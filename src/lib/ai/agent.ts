@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/lib/db";
 import { getProductContextString } from "./product-context";
-import { buildSystemPrompt } from "./system-prompt"; // fallback if no DB prompt
+import { buildSystemPrompt, CORE_RULES } from "./system-prompt";
 import { sendInstagramDM, sendInstagramImage, replyToInstagramComment } from "@/lib/meta/instagram";
 import { sendWhatsAppMessage, sendWhatsAppImage } from "@/lib/meta/whatsapp";
 import { sendFacebookDM, sendFacebookImage, replyToFacebookComment } from "@/lib/meta/facebook";
@@ -70,8 +70,9 @@ export async function processInboundMessage(conversationId: string, inboundMessa
   if (!config.platforms.includes(conversation.platform)) return;
 
   const productContext = await getProductContextString();
+  // Always use DB prompt if set, otherwise use the default. Always append CORE_RULES and product context.
   const basePrompt = config.systemPrompt || buildSystemPrompt(productContext);
-  const systemPrompt = productContext ? `${basePrompt}\n\n${productContext}` : basePrompt;
+  const systemPrompt = [basePrompt, CORE_RULES, productContext].filter(Boolean).join("\n\n");
 
   const messages: Anthropic.MessageParam[] = conversation.messages
     .filter((m) => m.id !== inboundMessageId || m.direction === "INBOUND")
