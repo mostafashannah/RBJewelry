@@ -6,12 +6,36 @@ import { sendInstagramDM, sendInstagramImage, replyToInstagramComment } from "@/
 import { sendWhatsAppMessage, sendWhatsAppImage } from "@/lib/meta/whatsapp";
 import { sendFacebookDM, sendFacebookImage, replyToFacebookComment } from "@/lib/meta/facebook";
 import { resolveWhatsAppMediaUrl, downloadAsBase64 } from "@/lib/meta/media";
+import { lookupOrders } from "@/lib/shopify/admin";
 import { Platform, Direction } from "@prisma/client";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
 // Tool definition — lets the AI send a product photo
 const TOOLS: Anthropic.Tool[] = [
+  {
+    name: "check_order_status",
+    description:
+      "Look up a customer's order status from Shopify. Use this whenever a customer asks about their order, delivery, or where their package is. For WhatsApp conversations, pass the customer's phone number. Otherwise pass the order number if the customer provided it, or their name.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        order_number: {
+          type: "string",
+          description: "The order number the customer mentioned (e.g. '1234' or '#1234'). Optional.",
+        },
+        phone: {
+          type: "string",
+          description: "Customer phone number to search by (digits only, e.g. '201038337698'). Use for WhatsApp conversations.",
+        },
+        customer_name: {
+          type: "string",
+          description: "Customer name to search by if no order number or phone is available.",
+        },
+      },
+      required: [],
+    },
+  },
   {
     name: "send_product_image",
     description:
@@ -32,6 +56,23 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
 ];
+
+function describeOrderPhase(fulfillmentStatus: string | null, shipmentStatus: string | null): string {
+  const fs = (fulfillmentStatus ?? "").toUpperCase();
+  const ss = (shipmentStatus ?? "").toUpperCase();
+
+  if (fs === "UNFULFILLED" || !fs) {
+    return "Still being crafted — your piece is handmade especially for you (5–7 business days)";
+  }
+  if (ss === "OUT_FOR_DELIVERY") return "Out for delivery today — should arrive very soon!";
+  if (ss === "DELIVERED") return "Delivered! We hope you love it ❤";
+  if (ss === "ATTEMPTED_DELIVERY") return "Courier attempted delivery but couldn't reach you — please contact them to reschedule";
+  if (ss === "IN_TRANSIT" || ss === "CONFIRMED" || ss === "PICKED_UP") return "Picked up by the courier and on its way to you";
+  if (ss === "LABEL_PRINTED" || ss === "LABEL_PURCHASED") return "Packed and ready — waiting for courier pickup";
+  if (fs === "PARTIAL") return "Partially shipped — part of your order is on its way";
+  if (fs === "FULFILLED") return "Shipped and on its way to you";
+  return "Being processed";
+}
 
 async function findProductImage(productName: string): Promise<{ imageUrl: string; title: string; price: string } | null> {
   const name = productName.toLowerCase();
@@ -153,10 +194,11 @@ export async function processInboundMessage(conversationId: string, inboundMessa
     messages[messages.length - 1] = { role: "user", content: userContent };
   }
 
-  // Only offer image tool for DM platforms
+  // Image tool only for DM platforms; order status tool always available
   const canSendImages = ([Platform.WHATSAPP, Platform.INSTAGRAM_DM, Platform.FACEBOOK_DM] as Platform[]).includes(
     conversation.platform
   );
+  const activeTools = canSendImages ? TOOLS : TOOLS.filter((t) => t.name !== "send_product_image");
 
   console.log(`[AI] Calling Anthropic API, key prefix=${process.env.ANTHROPIC_API_KEY?.slice(0, 10)}, messages=${messages.length}`);
   let firstResponse: Anthropic.Message;
@@ -166,7 +208,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
       max_tokens: config.maxTokens ?? 400,
       system: systemPrompt,
       messages,
-      ...(canSendImages ? { tools: TOOLS, tool_choice: { type: "auto" as const } } : {}),
+      ...(activeTools.length > 0 ? { tools: activeTools, tool_choice: { type: "auto" as const } } : {}),
     });
   } catch (err) {
     console.error("[AI] Anthropic API call failed:", err);
@@ -183,7 +225,44 @@ export async function processInboundMessage(conversationId: string, inboundMessa
     // Execute all tool calls and collect results for multi-turn completion
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
     for (const block of firstResponse.content) {
-      if (block.type === "tool_use" && block.name === "send_product_image") {
+      if (block.type === "tool_use" && block.name === "check_order_status") {
+        const input = block.input as { order_number?: string; phone?: string; customer_name?: string };
+        try {
+          let query = "";
+          if (input.order_number) {
+            const num = input.order_number.replace(/[^0-9]/g, "");
+            query = `name:#${num}`;
+          } else if (input.phone) {
+            const digits = input.phone.replace(/[^0-9]/g, "");
+            query = `phone:${digits}`;
+          } else if (conversation.platform === Platform.WHATSAPP) {
+            const digits = conversation.externalId.replace(/[^0-9]/g, "");
+            query = `phone:${digits}`;
+          } else if (input.customer_name) {
+            query = input.customer_name;
+          }
+
+          if (!query) {
+            toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "No order number or phone provided. Ask the customer for their order number." });
+          } else {
+            const orders = await lookupOrders(query);
+            if (!orders.length) {
+              toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "No orders found for this customer." });
+            } else {
+              const summary = orders.map((o) => {
+                const items = o.items.map((i) => `${i.quantity}x ${i.title}`).join(", ");
+                const phase = describeOrderPhase(o.fulfillmentStatus, o.shipmentStatus);
+                const tracking = o.trackingNumber ? ` Tracking: ${o.trackingNumber}` : "";
+                return `Order ${o.orderNumber} (${items}): ${phase}.${tracking}`;
+              }).join("\n");
+              toolResults.push({ type: "tool_result", tool_use_id: block.id, content: summary });
+            }
+          }
+        } catch (err) {
+          console.error("Order lookup failed:", err);
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "Could not retrieve order info right now.", is_error: true });
+        }
+      } else if (block.type === "tool_use" && block.name === "send_product_image") {
         const input = block.input as { product_name: string; caption?: string };
         const product = await findProductImage(input.product_name);
         if (product) {

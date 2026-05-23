@@ -152,6 +152,67 @@ export async function getOrders(limit = 50, status = "any"): Promise<{ orders: S
   return { orders };
 }
 
+const ORDER_LOOKUP_QUERY = `
+  query lookupOrders($query: String!) {
+    orders(first: 5, query: $query) {
+      edges {
+        node {
+          name
+          createdAt
+          fulfillmentStatus
+          financialStatus
+          lineItems(first: 10) {
+            edges { node { title quantity } }
+          }
+          fulfillments(first: 5) {
+            status
+            shipmentStatus
+            updatedAt
+            trackingInfo { number url }
+          }
+        }
+      }
+    }
+  }
+`;
+
+export interface OrderLookupResult {
+  orderNumber: string;
+  createdAt: string;
+  fulfillmentStatus: string | null;
+  financialStatus: string;
+  items: { title: string; quantity: number }[];
+  shipmentStatus: string | null;
+  trackingNumber: string | null;
+  trackingUrl: string | null;
+}
+
+export async function lookupOrders(searchQuery: string): Promise<OrderLookupResult[]> {
+  const data = await shopifyGraphQL<{
+    orders: { edges: { node: {
+      name: string; createdAt: string;
+      fulfillmentStatus: string | null; financialStatus: string;
+      lineItems: { edges: { node: { title: string; quantity: number } }[] };
+      fulfillments: { status: string; shipmentStatus: string | null; updatedAt: string; trackingInfo: { number: string; url: string }[] }[];
+    } }[] };
+  }>(ORDER_LOOKUP_QUERY, { query: searchQuery });
+
+  return data.orders.edges.map(({ node }) => {
+    const lastFulfillment = node.fulfillments[node.fulfillments.length - 1] ?? null;
+    const tracking = lastFulfillment?.trackingInfo?.[0] ?? null;
+    return {
+      orderNumber: node.name,
+      createdAt: node.createdAt,
+      fulfillmentStatus: node.fulfillmentStatus ?? null,
+      financialStatus: node.financialStatus,
+      items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity })),
+      shipmentStatus: lastFulfillment?.shipmentStatus ?? null,
+      trackingNumber: tracking?.number ?? null,
+      trackingUrl: tracking?.url ?? null,
+    };
+  });
+}
+
 export async function getLocations(): Promise<{ locations: { id: string; name: string }[] }> {
   const data = await shopifyGraphQL<{
     locations: { edges: { node: { id: string; name: string } }[] };
