@@ -90,6 +90,8 @@ export default function InboxPage() {
     const endpoint =
       selected.platform === "WHATSAPP"
         ? "/api/meta/send/whatsapp"
+        : selected.platform.startsWith("FACEBOOK")
+        ? "/api/meta/send/facebook"
         : "/api/meta/send/instagram";
     const body: Record<string, string> = {
       conversationId: selected.id,
