@@ -156,13 +156,20 @@ export async function processInboundMessage(conversationId: string, inboundMessa
     conversation.platform
   );
 
-  const firstResponse = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: config.maxTokens ?? 400,
-    system: systemPrompt,
-    messages,
-    ...(canSendImages ? { tools: TOOLS, tool_choice: { type: "auto" as const } } : {}),
-  });
+  console.log(`[AI] Calling Anthropic API, key prefix=${process.env.ANTHROPIC_API_KEY?.slice(0, 10)}, messages=${messages.length}`);
+  let firstResponse: Anthropic.Message;
+  try {
+    firstResponse = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: config.maxTokens ?? 400,
+      system: systemPrompt,
+      messages,
+      ...(canSendImages ? { tools: TOOLS, tool_choice: { type: "auto" as const } } : {}),
+    });
+  } catch (err) {
+    console.error("[AI] Anthropic API call failed:", err);
+    return;
+  }
   console.log(`[AI] First response stop_reason=${firstResponse.stop_reason} blocks=${firstResponse.content.length}`);
 
   let imageSent = false;
