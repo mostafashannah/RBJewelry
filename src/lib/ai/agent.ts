@@ -58,12 +58,16 @@ async function sendImage(platform: Platform, externalId: string, imageUrl: strin
 
 export async function processInboundMessage(conversationId: string, inboundMessageId: string) {
   const startMs = Date.now();
+  console.log(`[AI] processInboundMessage called: conv=${conversationId} msg=${inboundMessageId}`);
 
   const conversation = await db.conversation.findUnique({
     where: { id: conversationId },
     include: { messages: { orderBy: { sentAt: "asc" }, take: 20 } },
   });
-  if (!conversation) return;
+  if (!conversation) {
+    console.log("[AI] Conversation not found, skipping");
+    return;
+  }
 
   const config = await db.aiConfig.findFirst();
   if (!config?.autoReplyEnabled) {
@@ -74,6 +78,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
     console.log(`[AI] Platform ${conversation.platform} not in enabled list:`, config.platforms);
     return;
   }
+  console.log(`[AI] Processing reply for platform=${conversation.platform}`);
 
   const productContext = await getProductContextString();
   // Always use DB prompt if set, otherwise use the default. Always append CORE_RULES and product context.
