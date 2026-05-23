@@ -39,7 +39,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "send_product_image",
     description:
-      "Send ONE product photo to the customer. Call this tool once per product — do NOT batch multiple products in one call. If showing multiple products, call this tool separately for each one, sending them one at a time. Only use for DM platforms (not comments).",
+      "Send ONE product photo to the customer. Call this tool once per product — do NOT call it more than once for the same product, even if the customer asks again. If showing multiple products, call this tool separately for each one. Only use for DM platforms (not comments).",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -226,6 +226,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
   if (firstResponse.stop_reason === "tool_use") {
     // Execute all tool calls and collect results for multi-turn completion
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    const sentProductIds = new Set<string>(); // deduplicate — never send same product twice
     for (const block of firstResponse.content) {
       if (block.type === "tool_use" && block.name === "check_order_status") {
         const input = block.input as { order_number?: string; phone?: string; customer_name?: string };
@@ -268,11 +269,16 @@ export async function processInboundMessage(conversationId: string, inboundMessa
         const input = block.input as { product_name: string; caption?: string };
         const product = await findProductImage(input.product_name);
         if (product) {
+          if (sentProductIds.has(product.imageUrl)) {
+            toolResults.push({ type: "tool_result", tool_use_id: block.id, content: `Already sent image of "${product.title}" — skipped duplicate.` });
+            continue;
+          }
           const caption = input.caption ?? `${product.title} — ${product.price}`;
           try {
             if (imageSent) await new Promise((r) => setTimeout(r, 800)); // space out multiple images
-          await sendImage(conversation.platform, conversation.externalId, product.imageUrl, caption);
+            await sendImage(conversation.platform, conversation.externalId, product.imageUrl, caption);
             imageSent = true;
+            sentProductIds.add(product.imageUrl);
             await db.message.create({
               data: {
                 conversationId,
