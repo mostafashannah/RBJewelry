@@ -10,6 +10,7 @@ import {
   Megaphone,
   Wallet,
   Settings,
+  ClipboardList,
 } from "lucide-react";
 
 const nav = [
@@ -20,6 +21,7 @@ const nav = [
   { href: "/ads", label: "Ads", icon: Megaphone },
   { href: "/analytics", label: "Analytics", icon: BarChart2 },
   { href: "/finances", label: "Finances", icon: Wallet },
+  { href: "/reports", label: "Reports", icon: ClipboardList },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

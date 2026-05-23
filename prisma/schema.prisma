@@ -171,3 +171,16 @@ model Expense {
   date        DateTime
   createdAt   DateTime @default(now())
 }
+
+model DailyReport {
+  id          String   @id @default(cuid())
+  reportDate  String   // "2024-01-15"
+  summary     String   @db.Text
+  stats       Json
+  unanswered  Json
+  topTopics   Json
+  createdAt   DateTime @default(now())
+
+  @@unique([reportDate])
+  @@index([createdAt])
+}
