@@ -85,12 +85,23 @@ export async function processInboundMessage(conversationId: string, inboundMessa
   const basePrompt = config.systemPrompt || buildSystemPrompt(productContext);
   const systemPrompt = [basePrompt, CORE_RULES, productContext].filter(Boolean).join("\n\n");
 
-  const messages: Anthropic.MessageParam[] = conversation.messages
-    .filter((m) => m.id !== inboundMessageId || m.direction === "INBOUND")
-    .map((m) => ({
-      role: m.direction === Direction.INBOUND ? "user" : "assistant",
-      content: m.body,
-    }));
+  // Build conversation history — skip the current inbound message (added below) and
+  // skip [Image] outbound records (metadata-only, not actual text replies).
+  // Merge consecutive same-role messages to satisfy Anthropic's alternating-turn requirement.
+  const rawHistory = conversation.messages.filter(
+    (m) => m.id !== inboundMessageId && !(m.direction === Direction.OUTBOUND && m.body.startsWith("[Image]"))
+  );
+  const messages: Anthropic.MessageParam[] = [];
+  for (const m of rawHistory) {
+    const role = m.direction === Direction.INBOUND ? "user" : "assistant";
+    if (messages.length > 0 && messages[messages.length - 1].role === role) {
+      // Merge into previous message to avoid consecutive same-role turns
+      const prev = messages[messages.length - 1];
+      prev.content = `${prev.content as string}\n${m.body}`;
+    } else {
+      messages.push({ role, content: m.body });
+    }
+  }
 
   const inboundMsg = conversation.messages.find((m) => m.id === inboundMessageId);
   if (!inboundMsg) return;
@@ -141,48 +152,76 @@ export async function processInboundMessage(conversationId: string, inboundMessa
   }
 
   // Only offer image tool for DM platforms
-  const canSendImages = [Platform.WHATSAPP, Platform.INSTAGRAM_DM, Platform.FACEBOOK_DM].includes(
+  const canSendImages = ([Platform.WHATSAPP, Platform.INSTAGRAM_DM, Platform.FACEBOOK_DM] as Platform[]).includes(
     conversation.platform
   );
 
-  const response = await anthropic.messages.create({
+  const firstResponse = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: config.maxTokens ?? 400,
     system: systemPrompt,
     messages,
     ...(canSendImages ? { tools: TOOLS, tool_choice: { type: "auto" as const } } : {}),
   });
+  console.log(`[AI] First response stop_reason=${firstResponse.stop_reason} blocks=${firstResponse.content.length}`);
 
-  // Handle tool use (send product image)
   let imageSent = false;
-  for (const block of response.content) {
-    if (block.type === "tool_use" && block.name === "send_product_image") {
-      const input = block.input as { product_name: string; caption?: string };
-      const product = await findProductImage(input.product_name);
-      if (product) {
-        const caption = input.caption ?? `${product.title} — ${product.price}`;
-        try {
-          await sendImage(conversation.platform, conversation.externalId, product.imageUrl, caption);
-          imageSent = true;
-          // Save image message to DB
-          await db.message.create({
-            data: {
-              conversationId,
-              direction: Direction.OUTBOUND,
-              body: `[Image] ${product.title} — ${caption}`,
-              isAiGenerated: true,
-              deliveredAt: new Date(),
-            },
-          });
-        } catch (err) {
-          console.error("Failed to send product image:", err);
+  let replyText = "";
+  let inputTokens = firstResponse.usage.input_tokens;
+  let outputTokens = firstResponse.usage.output_tokens;
+
+  if (firstResponse.stop_reason === "tool_use") {
+    // Execute all tool calls and collect results for multi-turn completion
+    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    for (const block of firstResponse.content) {
+      if (block.type === "tool_use" && block.name === "send_product_image") {
+        const input = block.input as { product_name: string; caption?: string };
+        const product = await findProductImage(input.product_name);
+        if (product) {
+          const caption = input.caption ?? `${product.title} — ${product.price}`;
+          try {
+            await sendImage(conversation.platform, conversation.externalId, product.imageUrl, caption);
+            imageSent = true;
+            await db.message.create({
+              data: {
+                conversationId,
+                direction: Direction.OUTBOUND,
+                body: `[Image] ${product.title} — ${caption}`,
+                isAiGenerated: true,
+                deliveredAt: new Date(),
+              },
+            });
+            toolResults.push({ type: "tool_result", tool_use_id: block.id, content: `Sent image of "${product.title}".` });
+          } catch (err) {
+            console.error("Failed to send product image:", err);
+            toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "Image send failed.", is_error: true });
+          }
+        } else {
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "Product not found.", is_error: true });
         }
       }
     }
+
+    // Second call to get Claude's text reply after tool execution
+    const followUp = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: config.maxTokens ?? 400,
+      system: systemPrompt,
+      messages: [
+        ...messages,
+        { role: "assistant" as const, content: firstResponse.content },
+        { role: "user" as const, content: toolResults },
+      ],
+    });
+    replyText = followUp.content.find((b) => b.type === "text")?.text ?? "";
+    inputTokens += followUp.usage.input_tokens;
+    outputTokens += followUp.usage.output_tokens;
+    console.log(`[AI] Follow-up reply: "${replyText.slice(0, 80)}"`);
+  } else {
+    replyText = firstResponse.content.find((b) => b.type === "text")?.text ?? "";
+    console.log(`[AI] Direct reply: "${replyText.slice(0, 80)}"`);
   }
 
-  // Extract text reply
-  const replyText = response.content.find((b) => b.type === "text")?.text ?? "";
   if (!replyText && !imageSent) return;
   if (!replyText) {
     await db.conversation.update({ where: { id: conversationId }, data: { lastMessageAt: new Date(), unreadCount: 0 } });
@@ -207,8 +246,8 @@ export async function processInboundMessage(conversationId: string, inboundMessa
       rawResponse: replyText,
       finalReply: replyText,
       model: "claude-sonnet-4-6",
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
+      inputTokens,
+      outputTokens,
       processingMs: Date.now() - startMs,
     },
   });
