@@ -5,6 +5,7 @@ import { buildSystemPrompt } from "./system-prompt"; // fallback if no DB prompt
 import { sendInstagramDM, sendInstagramImage, replyToInstagramComment } from "@/lib/meta/instagram";
 import { sendWhatsAppMessage, sendWhatsAppImage } from "@/lib/meta/whatsapp";
 import { sendFacebookDM, sendFacebookImage, replyToFacebookComment } from "@/lib/meta/facebook";
+import { resolveWhatsAppMediaUrl, downloadAsBase64 } from "@/lib/meta/media";
 import { Platform, Direction } from "@prisma/client";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
@@ -82,8 +83,49 @@ export async function processInboundMessage(conversationId: string, inboundMessa
   const inboundMsg = conversation.messages.find((m) => m.id === inboundMessageId);
   if (!inboundMsg) return;
 
+  // Build user content — include image if present
+  let userContent: Anthropic.MessageParam["content"] = inboundMsg.body;
+
+  if (inboundMsg.mediaUrl) {
+    try {
+      let imageSource: Anthropic.Base64ImageSource | Anthropic.URLImageSource | null = null;
+
+      if (inboundMsg.mediaUrl.startsWith("wa_media:")) {
+        // WhatsApp — resolve media ID to URL, then download
+        const mediaId = inboundMsg.mediaUrl.replace("wa_media:", "");
+        const mediaUrl = await resolveWhatsAppMediaUrl(mediaId);
+        if (mediaUrl) {
+          const img = await downloadAsBase64(mediaUrl, true);
+          if (img) {
+            imageSource = { type: "base64", media_type: img.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: img.data };
+          }
+        }
+      } else {
+        // Instagram / Facebook — public URL
+        imageSource = { type: "url", url: inboundMsg.mediaUrl };
+      }
+
+      if (imageSource) {
+        userContent = [
+          { type: "image", source: imageSource },
+          {
+            type: "text",
+            text: inboundMsg.body.includes("Customer sent a photo")
+              ? "The customer sent this photo. Please identify which RB Jewelry product this is and share its name, price, available sizes, and a direct link to rbjewelry.co to order it."
+              : inboundMsg.body,
+          },
+        ];
+      }
+    } catch (err) {
+      console.error("Failed to load customer image:", err);
+    }
+  }
+
   if (messages.length === 0 || messages[messages.length - 1].role !== "user") {
-    messages.push({ role: "user", content: inboundMsg.body });
+    messages.push({ role: "user", content: userContent });
+  } else {
+    // Replace last user message with vision-enhanced version
+    messages[messages.length - 1] = { role: "user", content: userContent };
   }
 
   // Only offer image tool for DM platforms

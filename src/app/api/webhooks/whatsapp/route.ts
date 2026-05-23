@@ -42,7 +42,9 @@ export async function POST(req: NextRequest) {
 
       const contacts = val.contacts ?? [];
       for (const msg of val.messages ?? []) {
-        if (msg.type !== "text" || !msg.text?.body) continue;
+        const isText = msg.type === "text" && msg.text?.body;
+        const isImage = msg.type === "image";
+        if (!isText && !isImage) continue;
 
         const contact = contacts.find((c) => c.wa_id === msg.from);
 
@@ -64,12 +66,20 @@ export async function POST(req: NextRequest) {
         const exists = await db.message.findUnique({ where: { externalMsgId: msg.id } });
         if (exists) continue;
 
+        // For image messages, store media ID as wa_media:{id} so agent can fetch it
+        const imageMsg = msg as unknown as { type: string; image?: { id: string; caption?: string } };
+        const mediaUrl = isImage && imageMsg.image?.id ? `wa_media:${imageMsg.image.id}` : null;
+        const body = isImage
+          ? (imageMsg.image?.caption ?? "أرسل العميل صورة / Customer sent a photo")
+          : (msg as { text: { body: string } }).text.body;
+
         const message = await db.message.create({
           data: {
             conversationId: conversation.id,
             direction: Direction.INBOUND,
-            body: msg.text.body,
+            body,
             externalMsgId: msg.id,
+            mediaUrl,
           },
         });
 

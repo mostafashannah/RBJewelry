@@ -52,12 +52,18 @@ export async function POST(req: NextRequest) {
 
 async function handleFacebookDM(value: Record<string, unknown>) {
   const sender = (value.sender as { id: string })?.id;
-  const msg = value.message as { mid?: string; text?: string } | undefined;
-  if (!sender || !msg?.text) return;
+  const msg = value.message as {
+    mid?: string;
+    text?: string;
+    attachments?: { type: string; payload?: { url?: string } }[];
+  } | undefined;
 
-  // Ignore messages from the page itself
-  const pageId = process.env.META_PAGE_ID;
-  if (sender === pageId) return;
+  const pageId = process.env.META_PAGE_ID ?? process.env.META_FACEBOOK_PAGE_ID;
+  if (!sender || sender === pageId) return;
+
+  const imageUrl = msg?.attachments?.find((a) => a.type === "image")?.payload?.url ?? null;
+  const body = msg?.text ?? (imageUrl ? "أرسل العميل صورة / Customer sent a photo" : null);
+  if (!body && !imageUrl) return;
 
   const conversation = await db.conversation.upsert({
     where: { platform_externalId: { platform: Platform.FACEBOOK_DM, externalId: sender } },
@@ -65,7 +71,7 @@ async function handleFacebookDM(value: Record<string, unknown>) {
     create: { platform: Platform.FACEBOOK_DM, externalId: sender, unreadCount: 1 },
   });
 
-  if (msg.mid) {
+  if (msg?.mid) {
     const exists = await db.message.findUnique({ where: { externalMsgId: msg.mid } });
     if (exists) return;
   }
@@ -74,8 +80,9 @@ async function handleFacebookDM(value: Record<string, unknown>) {
     data: {
       conversationId: conversation.id,
       direction: Direction.INBOUND,
-      body: msg.text,
-      externalMsgId: msg.mid ?? null,
+      body: body ?? "",
+      externalMsgId: msg?.mid ?? null,
+      mediaUrl: imageUrl,
     },
   });
 

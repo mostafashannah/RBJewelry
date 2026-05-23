@@ -52,8 +52,18 @@ export async function POST(req: NextRequest) {
 
 async function handleDM(value: Record<string, unknown>) {
   const sender = (value.sender as { id: string })?.id;
-  const msg = value.message as { mid?: string; text?: string; is_echo?: boolean } | undefined;
-  if (!sender || !msg?.text || msg.is_echo) return;
+  const msg = value.message as {
+    mid?: string;
+    text?: string;
+    is_echo?: boolean;
+    attachments?: { type: string; payload?: { url?: string } }[];
+  } | undefined;
+  if (!sender || msg?.is_echo) return;
+
+  // Extract text or image
+  const imageUrl = msg?.attachments?.find((a) => a.type === "image")?.payload?.url ?? null;
+  const body = msg?.text ?? (imageUrl ? "أرسل العميل صورة / Customer sent a photo" : null);
+  if (!body && !imageUrl) return;
 
   const conversation = await db.conversation.upsert({
     where: { platform_externalId: { platform: Platform.INSTAGRAM_DM, externalId: sender } },
@@ -61,8 +71,7 @@ async function handleDM(value: Record<string, unknown>) {
     create: { platform: Platform.INSTAGRAM_DM, externalId: sender, unreadCount: 1 },
   });
 
-  // Deduplicate
-  if (msg.mid) {
+  if (msg?.mid) {
     const exists = await db.message.findUnique({ where: { externalMsgId: msg.mid } });
     if (exists) return;
   }
@@ -71,12 +80,12 @@ async function handleDM(value: Record<string, unknown>) {
     data: {
       conversationId: conversation.id,
       direction: Direction.INBOUND,
-      body: msg.text,
-      externalMsgId: msg.mid ?? null,
+      body: body ?? "",
+      externalMsgId: msg?.mid ?? null,
+      mediaUrl: imageUrl,
     },
   });
 
-  // Async AI reply (fire and forget — don't block webhook response)
   processInboundMessage(conversation.id, message.id).catch(console.error);
 }
 
