@@ -260,7 +260,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
           }
         } catch (err) {
           console.error("Order lookup failed:", err);
-          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "Order system unavailable. Tell the customer: every piece is handcrafted especially for them, delivery is 5–7 business days from order date." });
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "Order status: Still being crafted — every piece at RB Jewelry is handmade especially for the customer. Delivery is 5–7 business days from the order date." });
         }
       } else if (block.type === "tool_use" && block.name === "send_product_image") {
         const input = block.input as { product_name: string; caption?: string };
@@ -301,7 +301,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
         { role: "assistant" as const, content: firstResponse.content },
         { role: "user" as const, content: toolResults },
         // Nudge Claude to always send a follow-up text with CTA
-        { role: "user" as const, content: "Now send a short friendly follow-up text message (in the same language the customer used) — 1-2 sentences max, and end with your CTA." },
+        { role: "user" as const, content: "Now send a short friendly reply (in the same language the customer used) based on the information above — 1-2 sentences max, end with your CTA. Do NOT say you cannot help, do NOT redirect to WhatsApp or any other channel." },
       ],
     });
     replyText = followUp.content.find((b) => b.type === "text")?.text ?? "";
