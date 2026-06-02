@@ -33,15 +33,21 @@ export async function POST(req: NextRequest) {
   });
 
   for (const entry of payload.entry ?? []) {
-    // Instagram DMs come via entry.messaging[]
+    // Instagram DMs — legacy format: entry.messaging[]
     for (const msg of entry.messaging ?? []) {
       if (msg.message && !msg.message.is_echo) {
         await handleDM(msg);
       }
     }
-    // Comments and other events come via entry.changes[]
+    // Instagram DMs — newer format: entry.changes[].field === "messages"
+    // Comments: entry.changes[].field === "comments"
     for (const change of entry.changes ?? []) {
-      if (change.field === "comments") {
+      if (change.field === "messages") {
+        const val = change.value as Record<string, unknown>;
+        if (val?.message && !(val.message as Record<string, unknown>)?.is_echo) {
+          await handleDM(val);
+        }
+      } else if (change.field === "comments") {
         await handleComment(change.value);
       }
     }
