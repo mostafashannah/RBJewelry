@@ -202,6 +202,11 @@ export interface OrderLookupResult {
 }
 
 export async function lookupOrders(searchQuery: string): Promise<OrderLookupResult[]> {
+  // Try local DB first — fast and works without live Shopify API
+  const localResults = await lookupOrdersFromCache(searchQuery);
+  if (localResults.length > 0) return localResults;
+
+  // Fall back to live Shopify API
   const data = await shopifyGraphQL<{
     orders: { edges: { node: {
       name: string; phone: string | null; createdAt: string;
@@ -226,6 +231,108 @@ export async function lookupOrders(searchQuery: string): Promise<OrderLookupResu
       trackingUrl: tracking?.url ?? null,
     };
   });
+}
+
+async function lookupOrdersFromCache(searchQuery: string): Promise<OrderLookupResult[]> {
+  let rows: Awaited<ReturnType<typeof db.shopifyOrderCache.findMany>> = [];
+
+  if (searchQuery.startsWith("name:#")) {
+    const num = searchQuery.replace("name:#", "").trim();
+    rows = await db.shopifyOrderCache.findMany({ where: { orderNumber: num }, take: 5 });
+  } else if (searchQuery.startsWith("phone:")) {
+    const phone = searchQuery.replace("phone:", "").trim().replace(/[^0-9]/g, "");
+    // Match last 9 digits to handle country-code variations
+    const suffix = phone.slice(-9);
+    rows = await db.shopifyOrderCache.findMany({
+      where: { customerPhone: { endsWith: suffix } },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    });
+  } else {
+    // Name search — not supported in cache, let Shopify handle it
+    return [];
+  }
+
+  if (!rows.length) return [];
+
+  return rows.map((r) => {
+    const items = (r.lineItemsJson as { title: string; quantity: number }[]) ?? [];
+    return {
+      orderNumber: `#${r.orderNumber}`,
+      phone: r.customerPhone ?? null,
+      createdAt: r.createdAt.toISOString(),
+      fulfillmentStatus: r.fulfillmentStatus ?? null,
+      financialStatus: r.status,
+      items: items.map((i) => ({ title: i.title, quantity: i.quantity })),
+      shipmentStatus: r.shipmentStatus ?? null,
+      trackingNumber: r.trackingNumber ?? null,
+      trackingUrl: r.trackingUrl ?? null,
+    };
+  });
+}
+
+export async function syncOrdersToCache() {
+  const data = await shopifyGraphQL<{
+    orders: { pageInfo: { hasNextPage: boolean; endCursor: string }; edges: { node: {
+      id: string; name: string; email: string | null; phone: string | null;
+      totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+      financialStatus: string; fulfillmentStatus: string | null; createdAt: string;
+      lineItems: { edges: { node: { title: string; quantity: number } }[] };
+      fulfillments: { status: string; shipmentStatus: string | null; trackingInfo: { number: string; url: string }[] }[];
+    } }[] };
+  }>(`
+    query {
+      orders(first: 250, query: "created_at:>2024-01-01") {
+        pageInfo { hasNextPage endCursor }
+        edges {
+          node {
+            id name email phone createdAt financialStatus fulfillmentStatus
+            totalPriceSet { shopMoney { amount currencyCode } }
+            lineItems(first: 20) { edges { node { title quantity } } }
+            fulfillments(first: 5) {
+              status shipmentStatus
+              trackingInfo { number url }
+            }
+          }
+        }
+      }
+    }
+  `);
+
+  for (const { node } of data.orders.edges) {
+    const lastFulfillment = node.fulfillments[node.fulfillments.length - 1] ?? null;
+    const tracking = lastFulfillment?.trackingInfo?.[0] ?? null;
+    const numericId = node.id.replace("gid://shopify/Order/", "");
+    const orderNum = node.name.replace("#", "");
+
+    await db.shopifyOrderCache.upsert({
+      where: { id: numericId },
+      update: {
+        status: node.financialStatus.toLowerCase(),
+        fulfillmentStatus: node.fulfillmentStatus ?? null,
+        shipmentStatus: lastFulfillment?.shipmentStatus ?? null,
+        trackingNumber: tracking?.number ?? null,
+        trackingUrl: tracking?.url ?? null,
+        lineItemsJson: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity })),
+        syncedAt: new Date(),
+      },
+      create: {
+        id: numericId,
+        orderNumber: orderNum,
+        customerEmail: node.email ?? null,
+        customerPhone: node.phone ?? null,
+        totalPrice: parseFloat(node.totalPriceSet.shopMoney.amount),
+        currency: node.totalPriceSet.shopMoney.currencyCode,
+        status: node.financialStatus.toLowerCase(),
+        fulfillmentStatus: node.fulfillmentStatus ?? null,
+        shipmentStatus: lastFulfillment?.shipmentStatus ?? null,
+        trackingNumber: tracking?.number ?? null,
+        trackingUrl: tracking?.url ?? null,
+        lineItemsJson: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity })),
+        createdAt: new Date(node.createdAt),
+      },
+    });
+  }
 }
 
 export async function getLocations(): Promise<{ locations: { id: string; name: string }[] }> {

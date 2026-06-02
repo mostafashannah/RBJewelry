@@ -1,11 +1,12 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { syncProductsToCache } from "@/lib/ai/product-context";
+import { syncOrdersToCache } from "@/lib/shopify/admin";
 
 export async function POST() {
   try {
-    await syncProductsToCache();
-    return NextResponse.json({ ok: true, message: "Products synced to cache" });
+    await Promise.all([syncProductsToCache(), syncOrdersToCache()]);
+    return NextResponse.json({ ok: true, message: "Products and orders synced to cache" });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

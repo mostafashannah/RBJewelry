@@ -50,6 +50,31 @@ export async function GET(req: NextRequest) {
     create: { shop: SHOP, accessToken: access_token },
   });
 
+  // Register webhooks so order updates flow into our DB automatically
+  const webhookTopics = [
+    "orders/create",
+    "orders/updated",
+    "orders/fulfilled",
+    "fulfillments/create",
+    "fulfillments/update",
+    "products/create",
+    "products/update",
+    "products/delete",
+  ];
+  const webhookEndpoint = "https://app.rbjewelry.net/api/webhooks/shopify";
+  for (const topic of webhookTopics) {
+    await fetch(`https://${SHOP}/admin/api/2024-10/webhooks.json`, {
+      method: "POST",
+      headers: {
+        "X-Shopify-Access-Token": access_token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        webhook: { topic, address: webhookEndpoint, format: "json" },
+      }),
+    }).catch(() => {/* ignore duplicate-registration errors */});
+  }
+
   return new NextResponse(
     `<html><body style="font-family:sans-serif;padding:40px;max-width:600px">
       <h2 style="color:#16a34a">✅ Shopify Connected!</h2>

@@ -136,19 +136,24 @@ model ShopifyProductCache {
 }
 
 model ShopifyOrderCache {
-  id            String   @id
-  orderNumber   String
-  customerEmail String?
-  customerPhone String?
-  totalPrice    Float
-  currency      String
-  status        String
-  lineItemsJson Json
-  createdAt     DateTime
-  syncedAt      DateTime @default(now())
+  id                String   @id
+  orderNumber       String
+  customerEmail     String?
+  customerPhone     String?
+  totalPrice        Float
+  currency          String
+  status            String
+  fulfillmentStatus String?
+  shipmentStatus    String?
+  trackingNumber    String?
+  trackingUrl       String?
+  lineItemsJson     Json
+  createdAt         DateTime
+  syncedAt          DateTime @default(now())
 
   @@index([customerPhone])
   @@index([customerEmail])
+  @@index([orderNumber])
 }
 
 model WebhookEvent {

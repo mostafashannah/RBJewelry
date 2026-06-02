@@ -4,6 +4,37 @@ import { db } from "@/lib/db";
 import { verifyShopifyHmac } from "@/lib/shopify/webhook-verify";
 import { syncProductsToCache } from "@/lib/ai/product-context";
 
+interface ShopifyFulfillment {
+  status: string;
+  shipment_status: string | null;
+  tracking_number: string | null;
+  tracking_url: string | null;
+}
+
+interface ShopifyOrderPayload {
+  id: number;
+  order_number: number;
+  email?: string;
+  phone?: string;
+  total_price: string;
+  currency: string;
+  financial_status: string;
+  fulfillment_status: string | null;
+  created_at: string;
+  line_items: unknown[];
+  fulfillments?: ShopifyFulfillment[];
+}
+
+function extractFulfillmentData(order: ShopifyOrderPayload) {
+  const lastFulfillment = order.fulfillments?.[order.fulfillments.length - 1] ?? null;
+  return {
+    fulfillmentStatus: order.fulfillment_status ?? null,
+    shipmentStatus: lastFulfillment?.shipment_status ?? null,
+    trackingNumber: lastFulfillment?.tracking_number ?? null,
+    trackingUrl: lastFulfillment?.tracking_url ?? null,
+  };
+}
+
 export async function POST(req: NextRequest) {
   const ab = await req.arrayBuffer();
   const rawBody = Buffer.from(ab);
@@ -24,24 +55,26 @@ export async function POST(req: NextRequest) {
     syncProductsToCache().catch(console.error);
   }
 
-  if (topic === "orders/create" || topic === "orders/updated") {
-    const order = payload as {
-      id: number;
-      order_number: number;
-      email?: string;
-      phone?: string;
-      total_price: string;
-      currency: string;
-      financial_status: string;
-      created_at: string;
-      line_items: unknown[];
-    };
+  if (
+    topic === "orders/create" ||
+    topic === "orders/updated" ||
+    topic === "orders/fulfilled" ||
+    topic === "fulfillments/create" ||
+    topic === "fulfillments/update"
+  ) {
+    // fulfillments/create and fulfillments/update payloads wrap the order differently
+    const order = (topic.startsWith("fulfillments/")
+      ? (payload as { order_id: number } & ShopifyOrderPayload)
+      : payload) as ShopifyOrderPayload;
+
+    const fulfillment = extractFulfillmentData(order);
 
     await db.shopifyOrderCache.upsert({
       where: { id: String(order.id) },
       update: {
         status: order.financial_status,
-        lineItemsJson: JSON.parse(JSON.stringify(order.line_items)),
+        ...fulfillment,
+        lineItemsJson: JSON.parse(JSON.stringify(order.line_items ?? [])),
         syncedAt: new Date(),
       },
       create: {
@@ -52,7 +85,8 @@ export async function POST(req: NextRequest) {
         totalPrice: parseFloat(order.total_price),
         currency: order.currency,
         status: order.financial_status,
-        lineItemsJson: JSON.parse(JSON.stringify(order.line_items)),
+        ...fulfillment,
+        lineItemsJson: JSON.parse(JSON.stringify(order.line_items ?? [])),
         createdAt: new Date(order.created_at),
       },
     });
