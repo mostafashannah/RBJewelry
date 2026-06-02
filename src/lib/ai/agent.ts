@@ -220,6 +220,18 @@ export async function processInboundMessage(conversationId: string, inboundMessa
     where: { id: conversationId },
     include: { messages: { orderBy: { sentAt: "desc" }, take: 20 } },
   });
+  // Load ALL previously sent image titles (full history) to prevent duplicates in long conversations
+  const allSentImages = conversation
+    ? await db.message.findMany({
+        where: {
+          conversationId,
+          direction: Direction.OUTBOUND,
+          body: { startsWith: "[Image]" },
+          id: { not: inboundMessageId },
+        },
+        select: { body: true },
+      })
+    : [];
   if (!conversation) {
     console.log("[AI] Conversation not found, skipping");
     return;
@@ -251,15 +263,12 @@ export async function processInboundMessage(conversationId: string, inboundMessa
       !(m.direction === Direction.OUTBOUND && (m.body.includes("wa.me") || m.body.includes("واتساب") && m.body.includes("تواصل")))
   );
 
-  // Pre-populate sent product titles from prior [Image] messages so we never resend across turns
+  // Pre-populate sent product titles from FULL history so we never resend in long conversations
   const sentProductTitles = new Set<string>(
-    rawHistory
-      .filter((m) => m.direction === Direction.OUTBOUND && m.body.startsWith("[Image]"))
-      .map((m) => {
-        // Body format: "[Image] Product Title — caption"
-        const inner = m.body.replace(/^\[Image\]\s*/, "");
-        return inner.split(" — ")[0].toLowerCase().trim();
-      })
+    allSentImages.map((m) => {
+      const inner = m.body.replace(/^\[Image\]\s*/, "");
+      return inner.split(" — ")[0].toLowerCase().trim();
+    })
   );
 
   const messages: Anthropic.MessageParam[] = [];
