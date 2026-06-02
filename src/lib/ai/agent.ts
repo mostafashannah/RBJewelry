@@ -166,6 +166,32 @@ async function preflightOrderLookup(
   }
 }
 
+function isBestSellerQuery(text: string): boolean {
+  const lower = text.toLowerCase();
+  return [
+    "best sell", "bestsell", "best-sell", "most popular", "popular products",
+    "أكثر مبيعاً", "أكتر مبيعاً", "الأكثر مبيع", "اكثر مبيع",
+    "الأشهر", "أشهر قطع", "اشهر قطع", "أشهر منتج", "الأشهر عندكم",
+    "best seller", "top product", "show me your", "woriني", "وريني",
+    "شوفيني", "شوفني", "اشوف منتجاتك", "أشوف منتجاتك",
+  ].some((k) => lower.includes(k));
+}
+
+async function getBestSellerProducts(limit = 4) {
+  // Prefer products tagged "best-seller" in Shopify
+  const tagged = await db.shopifyProductCache.findMany({
+    where: { available: true, tags: { has: "best-seller" } },
+    take: limit,
+  });
+  if (tagged.length > 0) return tagged;
+  // Fall back to first N available products
+  return db.shopifyProductCache.findMany({
+    where: { available: true },
+    take: limit,
+    orderBy: { syncedAt: "asc" },
+  });
+}
+
 export async function processInboundMessage(conversationId: string, inboundMessageId: string) {
   const startMs = Date.now();
   console.log(`[AI] processInboundMessage called: conv=${conversationId} msg=${inboundMessageId}`);
@@ -265,7 +291,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
           {
             type: "text",
             text: inboundMsg.body.includes("Customer sent a photo")
-              ? "The customer sent this photo. Please identify which RB Jewelry product this is and share its name, price, available sizes, and a direct link to rbjewelry.co to order it."
+              ? "The customer sent this photo. Identify which RB Jewelry product this is, then IMMEDIATELY call send_product_image to show them that product photo, then share its name, price, available sizes, and link to rbjewelry.co."
               : inboundMsg.body,
           },
         ];
@@ -313,6 +339,41 @@ export async function processInboundMessage(conversationId: string, inboundMessa
   const activeTools = (canSendImages ? TOOLS : TOOLS.filter((t) => t.name !== "send_product_image"))
     .filter((t) => !(skipOrderTool && t.name === "check_order_status"));
 
+  // Pre-flight best seller images — send photos directly before Claude writes text
+  let imageSent = false;
+  if (isBestSellerQuery(inboundMsg.body) && canSendImages) {
+    const bestSellers = await getBestSellerProducts(4);
+    const sentTitles: string[] = [];
+    for (const product of bestSellers) {
+      if (!product.imageUrl) continue;
+      const price = product.priceMin === product.priceMax
+        ? `${product.priceMin} EGP`
+        : `${product.priceMin}–${product.priceMax} EGP`;
+      const caption = `${product.title} — ${price}`;
+      try {
+        if (imageSent) await new Promise((r) => setTimeout(r, 700));
+        await sendImage(conversation.platform, conversation.externalId, product.imageUrl, caption);
+        imageSent = true;
+        sentProductTitles.add(product.title.toLowerCase().trim());
+        sentTitles.push(product.title);
+        await db.message.create({
+          data: {
+            conversationId,
+            direction: Direction.OUTBOUND,
+            body: `[Image] ${product.title} — ${caption}`,
+            isAiGenerated: true,
+            deliveredAt: new Date(),
+          },
+        });
+      } catch (err) {
+        console.error("[AI] Pre-flight best seller image failed:", err);
+      }
+    }
+    if (sentTitles.length > 0) {
+      finalSystemPrompt = `${finalSystemPrompt}\n\n[PHOTOS ALREADY SENT: ${sentTitles.join(", ")} — do NOT call send_product_image for these again. Write a short warm text describing them.]`;
+    }
+  }
+
   console.log(`[AI] Calling Anthropic API, key prefix=${process.env.ANTHROPIC_API_KEY?.slice(0, 10)}, messages=${messages.length}`);
   let firstResponse: Anthropic.Message;
   try {
@@ -329,7 +390,6 @@ export async function processInboundMessage(conversationId: string, inboundMessa
   }
   console.log(`[AI] First response stop_reason=${firstResponse.stop_reason} blocks=${firstResponse.content.length}`);
 
-  let imageSent = false;
   let replyText = "";
   let inputTokens = firstResponse.usage.input_tokens;
   let outputTokens = firstResponse.usage.output_tokens;
