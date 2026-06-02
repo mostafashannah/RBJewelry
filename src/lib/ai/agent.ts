@@ -116,12 +116,16 @@ function isOrderQuery(text: string): boolean {
     "tracking", "تتبع", "track", "حالة", "status", "فين طلبي",
     "امتى", "متى", "كيمت", "ورد", "لسا", "جاي", "جه",
   ];
-  return keywords.some((k) => lower.includes(k));
+  if (keywords.some((k) => lower.includes(k))) return true;
+  // Customer replying with a phone number (answering bot's "what's your number?" question)
+  if (/^\s*\+?[\d\s\-]{8,15}\s*$/.test(text.trim())) return true;
+  return false;
 }
 
 function extractPhone(text: string): string | null {
-  // Match Egyptian-style numbers: 01xxxxxxxxx or country code variants
-  const match = text.match(/\b((?:\+?2)?01[0-9]{9}|(?:\+?20)[0-9]{10})\b/);
+  // Match Egyptian numbers: 01XXXXXXXXX (11 digits), allow 10 digits (missing last digit typo),
+  // and country-code variants like +201... or 201...
+  const match = text.match(/\b((?:\+?2)?01[0-9]{8,9}|(?:\+?20)[0-9]{9,10})\b/);
   return match ? match[0].replace(/[^0-9]/g, "") : null;
 }
 
@@ -153,7 +157,21 @@ async function preflightOrderLookup(
 
   try {
     const orders = await lookupOrders(query);
-    if (!orders.length) return "No orders found matching this customer's details.";
+    if (!orders.length) return "ORDER_NOT_FOUND: No order found with those details. Tell the customer kindly you couldn't find a matching order and ask them to double-check their order number or phone.";
+
+    // If we searched by order number, verify the phone matches before revealing status
+    if (orderNum && phone) {
+      const orderPhone = (orders[0].phone ?? "").replace(/[^0-9]/g, "");
+      const matches = orderPhone && (
+        orderPhone === phone ||
+        orderPhone.endsWith(phone.slice(-8)) ||
+        phone.endsWith(orderPhone.slice(-8))
+      );
+      if (!matches) {
+        return "PHONE_MISMATCH: The phone number provided doesn't match this order. Tell the customer kindly you couldn't verify the order with that number, and ask them to check again.";
+      }
+    }
+
     return orders.map((o) => {
       const items = o.items.map((i) => `${i.quantity}x ${i.title}`).join(", ");
       const phase = describeOrderPhase(o.fulfillmentStatus, o.shipmentStatus);
