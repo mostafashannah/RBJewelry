@@ -169,11 +169,13 @@ async function preflightOrderLookup(
 function isBestSellerQuery(text: string): boolean {
   const lower = text.toLowerCase();
   return [
-    "best sell", "bestsell", "best-sell", "most popular", "popular products",
-    "أكثر مبيعاً", "أكتر مبيعاً", "الأكثر مبيع", "اكثر مبيع",
-    "الأشهر", "أشهر قطع", "اشهر قطع", "أشهر منتج", "الأشهر عندكم",
-    "best seller", "top product", "show me your", "woriني", "وريني",
-    "شوفيني", "شوفني", "اشوف منتجاتك", "أشوف منتجاتك",
+    "best seller", "best sellers", "best sell", "bestseller", "bestsellers",
+    "most popular", "top products", "popular products",
+    "أكثر مبيعاً", "أكتر مبيعاً", "الأكثر مبيعا", "اكثر مبيعا",
+    "أشهر قطع", "اشهر قطع", "أشهر منتجاتكم", "أشهر منتجاتك",
+    "الأشهر عندكم", "الأشهر عندكي", "اشهر قطعكم",
+    "وريني منتجاتك", "وريني قطعك", "وريني كل", "شوفيني منتجاتك",
+    "اشوف منتجاتك", "أشوف منتجاتك",
   ].some((k) => lower.includes(k));
 }
 
