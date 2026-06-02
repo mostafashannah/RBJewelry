@@ -14,8 +14,18 @@ export async function GET() {
     );
   }
 
+  const fields = [
+    "messages",
+    "messaging_postbacks",
+    "feed",
+    "message_echoes",
+    "message_deliveries",
+    "messaging_optins",
+    "messaging_referrals",
+  ].join(",");
+
   const res = await fetch(
-    `https://graph.facebook.com/v19.0/${pageId}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,feed&access_token=${pageToken}`,
+    `https://graph.facebook.com/v19.0/${pageId}/subscribed_apps?subscribed_fields=${fields}&access_token=${pageToken}`,
     { method: "POST" }
   );
   const json = await res.json();
@@ -24,5 +34,11 @@ export async function GET() {
     return NextResponse.json({ error: json.error.message, detail: json.error }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true, result: json, pageId });
+  // Also check current subscriptions so we can see what's active
+  const check = await fetch(
+    `https://graph.facebook.com/v19.0/${pageId}/subscribed_apps?access_token=${pageToken}`
+  );
+  const checkJson = await check.json();
+
+  return NextResponse.json({ ok: true, result: json, pageId, currentSubscriptions: checkJson });
 }
