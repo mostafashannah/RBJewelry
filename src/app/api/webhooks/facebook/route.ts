@@ -91,7 +91,6 @@ async function handleFacebookDM(value: Record<string, unknown>) {
 
 async function handleFacebookComment(value: Record<string, unknown>) {
   const commentId = value.comment_id as string ?? value.id as string;
-  const postId = value.post_id as string ?? "";
   const fromId = (value.from as { id: string })?.id ?? "";
   const text = value.message as string;
 
@@ -103,7 +102,7 @@ async function handleFacebookComment(value: Record<string, unknown>) {
     create: {
       platform: Platform.FACEBOOK_COMMENT,
       externalId: commentId,
-      customerId: fromId,
+      displayName: fromId || undefined,
       unreadCount: 1,
     },
   });

@@ -43,6 +43,7 @@ const PRODUCTS_QUERY = `
                 id
                 title
                 price
+                compareAtPrice
                 sku
                 inventoryQuantity
                 inventoryItem { id }
@@ -84,6 +85,7 @@ export async function getProducts(limit = 50, afterCursor?: string): Promise<{ p
       id: parseInt(v.id.replace("gid://shopify/ProductVariant/", "")),
       title: v.title,
       price: v.price,
+      compare_at_price: (v as { compareAtPrice?: string | null }).compareAtPrice ?? null,
       sku: v.sku,
       inventory_quantity: v.inventoryQuantity,
       inventory_item_id: parseInt(v.inventoryItem.id.replace("gid://shopify/InventoryItem/", "")),
@@ -222,10 +224,12 @@ export async function getLocations(): Promise<{ locations: { id: string; name: s
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function getInventoryLevels(_locationId: string) {
   return { inventory_levels: [] as InventoryLevel[] };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function setInventoryLevel(_inventoryItemId: string, _locationId: string, _available: number) {
   // GraphQL mutation for inventory — kept as stub, implement when needed
 }
@@ -249,6 +253,7 @@ export interface ShopifyVariant {
   id: number;
   title: string;
   price: string;
+  compare_at_price?: string | null;
   sku: string;
   inventory_quantity: number;
   inventory_item_id: number;

@@ -5,7 +5,7 @@ import { sendFacebookDM, replyToFacebookComment } from "@/lib/meta/facebook";
 import { Direction, Platform } from "@prisma/client";
 
 export async function POST(req: NextRequest) {
-  const { conversationId, message, type } = await req.json();
+  const { conversationId, message } = await req.json();
   if (!conversationId || !message) {
     return NextResponse.json({ error: "conversationId and message required" }, { status: 400 });
   }

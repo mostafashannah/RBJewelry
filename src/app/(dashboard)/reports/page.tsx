@@ -107,7 +107,7 @@ export default function ReportsPage() {
         {!report ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <p className="text-zinc-400 text-sm">No report selected.</p>
-            <p className="text-zinc-400 text-xs mt-1">Click "Generate Today's Report" to start.</p>
+            <p className="text-zinc-400 text-xs mt-1">Click &quot;Generate Today&apos;s Report&quot; to start.</p>
           </div>
         ) : (
           <div className="max-w-3xl space-y-8">
@@ -170,7 +170,7 @@ export default function ReportsPage() {
                 <div className="space-y-3">
                   {(report.unanswered as UnansweredItem[]).map((item, i) => (
                     <div key={i} className="border border-zinc-100 rounded-xl p-4 space-y-2">
-                      <p className="text-sm font-medium text-zinc-900">"{item.question}"</p>
+                      <p className="text-sm font-medium text-zinc-900">&quot;{item.question}&quot;</p>
                       <p className="text-xs text-zinc-500">
                         <span className="font-medium text-zinc-700">Bot replied:</span> {item.botReply}
                       </p>

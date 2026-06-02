@@ -9,7 +9,7 @@ function stripHtml(html: string): string {
 
 function formatVariants(variants: ShopifyVariant[]): string {
   if (!variants?.length) return "";
-  const unique = [...new Set(variants.map((v) => v.title).filter((t) => t !== "Default Title"))];
+  const unique = Array.from(new Set(variants.map((v) => v.title).filter((t) => t !== "Default Title")));
   if (unique.length === 0) return "";
   return `Sizes/Options: ${unique.join(", ")}`;
 }
@@ -25,10 +25,23 @@ function buildProductBlock(p: {
   rawJson: unknown;
 }): string {
   const raw = p.rawJson as ShopifyProduct | null;
-  const price =
+
+  // Detect sale: compare_at_price > price on any variant
+  const variants = raw?.variants ?? [];
+  const compareAtMin = variants
+    .map((v) => parseFloat(v.compare_at_price ?? "0"))
+    .filter((n) => n > 0);
+  const originalMin = compareAtMin.length > 0 ? Math.min(...compareAtMin) : null;
+  const onSale = originalMin !== null && originalMin > p.priceMin;
+
+  const salePrice =
     p.priceMin === p.priceMax
       ? `${p.priceMin} ${p.currency}`
       : `${p.priceMin}–${p.priceMax} ${p.currency}`;
+
+  const price = onSale
+    ? `was ${originalMin} ${p.currency}, now ${salePrice} 🔖`
+    : salePrice;
 
   const lines: string[] = [`• ${p.title} — ${price} — ${p.available ? "In stock" : "Out of stock"}`];
 

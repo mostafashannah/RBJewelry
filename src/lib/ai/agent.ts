@@ -79,9 +79,20 @@ async function findProductImage(productName: string): Promise<{ imageUrl: string
   const products = await db.shopifyProductCache.findMany({ where: { available: true } });
   const match = products.find((p) => p.title.toLowerCase().includes(name)) ?? products[0];
   if (!match?.imageUrl) return null;
-  const price = match.priceMin === match.priceMax
+
+  const salePrice = match.priceMin === match.priceMax
     ? `${match.priceMin} EGP`
     : `${match.priceMin}–${match.priceMax} EGP`;
+
+  // Check for compare-at price in rawJson
+  const raw = match.rawJson as { variants?: { price: string; compare_at_price?: string | null }[] } | null;
+  const compareAtPrices = (raw?.variants ?? [])
+    .map((v) => parseFloat(v.compare_at_price ?? "0"))
+    .filter((n) => n > 0);
+  const originalMin = compareAtPrices.length > 0 ? Math.min(...compareAtPrices) : null;
+  const onSale = originalMin !== null && originalMin > match.priceMin;
+
+  const price = onSale ? `~~${originalMin} EGP~~ ${salePrice}` : salePrice;
   return { imageUrl: match.imageUrl, title: match.title, price };
 }
 
@@ -128,23 +139,37 @@ export async function processInboundMessage(conversationId: string, inboundMessa
   const basePrompt = config.systemPrompt || buildSystemPrompt(productContext);
   const systemPrompt = [basePrompt, CORE_RULES, productContext].filter(Boolean).join("\n\n");
 
-  // Build conversation history — skip the current inbound message (added below),
-  // skip [Image] outbound records, and scrub outbound messages that contain WhatsApp
-  // redirects so Claude doesn't learn to repeat that bad pattern.
+  // Build conversation history — skip the current inbound message (added below)
+  // and scrub outbound messages that contain WhatsApp redirects.
+  // [Image] messages are kept but converted to a short note so Claude knows what was already shown.
   const rawHistory = conversation.messages.filter(
     (m) => m.id !== inboundMessageId &&
-      !(m.direction === Direction.OUTBOUND && m.body.startsWith("[Image]")) &&
       !(m.direction === Direction.OUTBOUND && (m.body.includes("wa.me") || m.body.includes("واتساب") && m.body.includes("تواصل")))
   );
+
+  // Pre-populate sent product titles from prior [Image] messages so we never resend across turns
+  const sentProductTitles = new Set<string>(
+    rawHistory
+      .filter((m) => m.direction === Direction.OUTBOUND && m.body.startsWith("[Image]"))
+      .map((m) => {
+        // Body format: "[Image] Product Title — caption"
+        const inner = m.body.replace(/^\[Image\]\s*/, "");
+        return inner.split(" — ")[0].toLowerCase().trim();
+      })
+  );
+
   const messages: Anthropic.MessageParam[] = [];
   for (const m of rawHistory) {
     const role = m.direction === Direction.INBOUND ? "user" : "assistant";
+    // Convert [Image] records to a brief assistant note Claude can reason about
+    const body = (m.direction === Direction.OUTBOUND && m.body.startsWith("[Image]"))
+      ? `📸 ${m.body.replace(/^\[Image\]\s*/, "").split(" — ")[0]} — photo already sent`
+      : m.body;
     if (messages.length > 0 && messages[messages.length - 1].role === role) {
-      // Merge into previous message to avoid consecutive same-role turns
       const prev = messages[messages.length - 1];
-      prev.content = `${prev.content as string}\n${m.body}`;
+      prev.content = `${prev.content as string}\n${body}`;
     } else {
-      messages.push({ role, content: m.body });
+      messages.push({ role, content: body });
     }
   }
 
@@ -169,8 +194,11 @@ export async function processInboundMessage(conversationId: string, inboundMessa
           }
         }
       } else {
-        // Instagram / Facebook — public URL
-        imageSource = { type: "url", url: inboundMsg.mediaUrl };
+        // Facebook / Instagram CDN URLs are signed and expire — download immediately to base64
+        const img = await downloadAsBase64(inboundMsg.mediaUrl, false);
+        if (img) {
+          imageSource = { type: "base64", media_type: img.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: img.data };
+        }
       }
 
       if (imageSource) {
@@ -226,7 +254,8 @@ export async function processInboundMessage(conversationId: string, inboundMessa
   if (firstResponse.stop_reason === "tool_use") {
     // Execute all tool calls and collect results for multi-turn completion
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    const sentProductIds = new Set<string>(); // deduplicate — never send same product twice
+    // Seed from prior turns so we never resend a product seen earlier in this conversation
+    const sentInThisTurn = new Set<string>(sentProductTitles);
     for (const block of firstResponse.content) {
       if (block.type === "tool_use" && block.name === "check_order_status") {
         const input = block.input as { order_number?: string; phone?: string; customer_name?: string };
@@ -269,7 +298,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
         const input = block.input as { product_name: string; caption?: string };
         const product = await findProductImage(input.product_name);
         if (product) {
-          if (sentProductIds.has(product.imageUrl)) {
+          if (sentInThisTurn.has(product.title.toLowerCase().trim())) {
             toolResults.push({ type: "tool_result", tool_use_id: block.id, content: `Already sent image of "${product.title}" — skipped duplicate.` });
             continue;
           }
@@ -278,7 +307,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
             if (imageSent) await new Promise((r) => setTimeout(r, 800)); // space out multiple images
             await sendImage(conversation.platform, conversation.externalId, product.imageUrl, caption);
             imageSent = true;
-            sentProductIds.add(product.imageUrl);
+            sentInThisTurn.add(product.title.toLowerCase().trim());
             await db.message.create({
               data: {
                 conversationId,
