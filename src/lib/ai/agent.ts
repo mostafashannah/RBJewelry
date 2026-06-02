@@ -16,7 +16,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "check_order_status",
     description:
-      "Look up a customer's order status from Shopify. Use this whenever a customer asks about their order, delivery, or where their package is. For WhatsApp conversations, pass the customer's phone number. Otherwise pass the order number if the customer provided it, or their name.",
+      "Look up a customer's order status from Shopify. Call this tool in two situations: (1) when a customer asks about their order AND you already have their phone number — pass both order_number and phone together; (2) on WhatsApp, always pass the phone automatically. IMPORTANT: if the customer just sent you a phone number after you asked for it, call this tool immediately with the order number from earlier in the conversation and the phone they just provided — do NOT reply generically.",
     input_schema: {
       type: "object" as const,
       properties: {
