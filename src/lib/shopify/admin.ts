@@ -1,14 +1,24 @@
+import { db } from "@/lib/db";
+
 const SHOPIFY_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN!;
-const ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN!;
 const API_VERSION = process.env.SHOPIFY_ADMIN_API_VERSION ?? "2024-10";
 
-const GRAPHQL_URL = `https://${SHOPIFY_DOMAIN}/admin/api/${API_VERSION}/graphql.json`;
+async function getAccessToken(): Promise<string> {
+  const config = await db.shopifyConfig.findFirst({ where: { shop: SHOPIFY_DOMAIN } });
+  if (config?.accessToken) return config.accessToken;
+  // Fall back to env var (for local dev with a static token)
+  const envToken = process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN;
+  if (envToken) return envToken;
+  throw new Error("Shopify not connected. Visit /api/shopify/auth to connect.");
+}
 
 async function shopifyGraphQL<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
-  const res = await fetch(GRAPHQL_URL, {
+  const accessToken = await getAccessToken();
+  const url = `https://${SHOPIFY_DOMAIN}/admin/api/${API_VERSION}/graphql.json`;
+  const res = await fetch(url, {
     method: "POST",
     headers: {
-      "X-Shopify-Access-Token": ACCESS_TOKEN,
+      "X-Shopify-Access-Token": accessToken,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ query, variables }),

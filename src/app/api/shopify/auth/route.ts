@@ -1,27 +1,11 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
+import { db } from "@/lib/db";
 
 const CLIENT_ID = process.env.SHOPIFY_CLIENT_ID!;
 const CLIENT_SECRET = process.env.SHOPIFY_CLIENT_SECRET!;
 const SHOP = process.env.SHOPIFY_STORE_DOMAIN!;
 const REDIRECT_URI = "https://app.rbjewelry.net/api/shopify/auth";
-
-async function saveTokenToEnv(token: string) {
-  const envPath = path.join(process.cwd(), ".env");
-  try {
-    let raw = await fs.readFile(envPath, "utf8").catch(() => "");
-    if (raw.includes("SHOPIFY_ADMIN_API_ACCESS_TOKEN=")) {
-      raw = raw.replace(/SHOPIFY_ADMIN_API_ACCESS_TOKEN="[^"]*"/, `SHOPIFY_ADMIN_API_ACCESS_TOKEN="${token}"`);
-    } else {
-      raw += `\nSHOPIFY_ADMIN_API_ACCESS_TOKEN="${token}"`;
-    }
-    await fs.writeFile(envPath, raw, "utf8");
-  } catch {
-    // best-effort
-  }
-}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
@@ -60,7 +44,11 @@ export async function GET(req: NextRequest) {
   }
 
   const { access_token } = await tokenRes.json();
-  await saveTokenToEnv(access_token);
+  await db.shopifyConfig.upsert({
+    where: { shop: SHOP },
+    update: { accessToken: access_token },
+    create: { shop: SHOP, accessToken: access_token },
+  });
 
   return new NextResponse(
     `<html><body style="font-family:sans-serif;padding:40px;max-width:600px">

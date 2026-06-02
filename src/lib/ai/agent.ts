@@ -108,6 +108,64 @@ async function sendImage(platform: Platform, externalId: string, imageUrl: strin
   // Comments don't support images — silently skip
 }
 
+function isOrderQuery(text: string): boolean {
+  const lower = text.toLowerCase();
+  const keywords = [
+    "order", "orders", "طلب", "طلبي", "طلبيتي", "طلبتي", "طلباتي",
+    "شحن", "وصل", "وصلت", "وصلتش", "توصيل", "delivery", "delivered",
+    "tracking", "تتبع", "track", "حالة", "status", "فين طلبي",
+    "امتى", "متى", "كيمت", "ورد", "لسا", "جاي", "جه",
+  ];
+  return keywords.some((k) => lower.includes(k));
+}
+
+function extractPhone(text: string): string | null {
+  // Match Egyptian-style numbers: 01xxxxxxxxx or country code variants
+  const match = text.match(/\b((?:\+?2)?01[0-9]{9}|(?:\+?20)[0-9]{10})\b/);
+  return match ? match[0].replace(/[^0-9]/g, "") : null;
+}
+
+function extractOrderNumber(text: string): string | null {
+  const match = text.match(/#?(\d{3,6})/);
+  return match ? match[1] : null;
+}
+
+async function preflightOrderLookup(
+  platform: Platform,
+  externalId: string,
+  currentMsg: string,
+  history: string,
+): Promise<string | null> {
+  let phone: string | null = null;
+  let orderNum: string | null = null;
+
+  if (platform === Platform.WHATSAPP) {
+    phone = externalId.replace(/[^0-9]/g, "");
+  } else {
+    // Scan full conversation text for a phone number
+    phone = extractPhone(currentMsg) ?? extractPhone(history);
+  }
+
+  orderNum = extractOrderNumber(currentMsg) ?? extractOrderNumber(history);
+
+  const query = orderNum ? `name:#${orderNum}` : phone ? `phone:${phone}` : null;
+  if (!query) return null;
+
+  try {
+    const orders = await lookupOrders(query);
+    if (!orders.length) return "No orders found matching this customer's details.";
+    return orders.map((o) => {
+      const items = o.items.map((i) => `${i.quantity}x ${i.title}`).join(", ");
+      const phase = describeOrderPhase(o.fulfillmentStatus, o.shipmentStatus);
+      const tracking = o.trackingNumber ? ` Tracking: ${o.trackingNumber}` : "";
+      return `Order ${o.orderNumber} (${items}): ${phase}.${tracking}`;
+    }).join("\n");
+  } catch (err) {
+    console.error("[AI] Pre-flight order lookup failed:", err);
+    return null;
+  }
+}
+
 export async function processInboundMessage(conversationId: string, inboundMessageId: string) {
   const startMs = Date.now();
   console.log(`[AI] processInboundMessage called: conv=${conversationId} msg=${inboundMessageId}`);
@@ -224,11 +282,36 @@ export async function processInboundMessage(conversationId: string, inboundMessa
     messages[messages.length - 1] = { role: "user", content: userContent };
   }
 
-  // Image tool only for DM platforms; order status tool always available
+  // Pre-flight order lookup — runs before Claude so we always have real data for order queries
+  const historyText = conversation.messages.map((m) => m.body).join(" ");
+  let finalSystemPrompt = systemPrompt;
+  let skipOrderTool = false;
+
+  if (isOrderQuery(inboundMsg.body)) {
+    const orderData = await preflightOrderLookup(
+      conversation.platform,
+      conversation.externalId,
+      inboundMsg.body,
+      historyText,
+    );
+
+    if (orderData) {
+      finalSystemPrompt = `${systemPrompt}\n\n[SHOPIFY ORDER DATA — use this directly in your reply, do NOT call check_order_status]\n${orderData}`;
+      skipOrderTool = true;
+      console.log(`[AI] Pre-flight order data injected: ${orderData.slice(0, 100)}`);
+    } else if (conversation.platform !== Platform.WHATSAPP) {
+      // No phone / order number available — instruct Claude to ask for phone
+      finalSystemPrompt = `${systemPrompt}\n\n[ORDER QUERY DETECTED — you do not have the customer's phone number yet. Ask for it politely before giving any order status. Do NOT make up any status.]`;
+      skipOrderTool = true;
+    }
+  }
+
+  // Image tool only for DM platforms; order status tool when not handled by pre-flight
   const canSendImages = ([Platform.WHATSAPP, Platform.INSTAGRAM_DM, Platform.FACEBOOK_DM] as Platform[]).includes(
     conversation.platform
   );
-  const activeTools = canSendImages ? TOOLS : TOOLS.filter((t) => t.name !== "send_product_image");
+  const activeTools = (canSendImages ? TOOLS : TOOLS.filter((t) => t.name !== "send_product_image"))
+    .filter((t) => !(skipOrderTool && t.name === "check_order_status"));
 
   console.log(`[AI] Calling Anthropic API, key prefix=${process.env.ANTHROPIC_API_KEY?.slice(0, 10)}, messages=${messages.length}`);
   let firstResponse: Anthropic.Message;
@@ -236,7 +319,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
     firstResponse = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: config.maxTokens ?? 400,
-      system: systemPrompt,
+      system: finalSystemPrompt,
       messages,
       ...(activeTools.length > 0 ? { tools: activeTools, tool_choice: { type: "auto" as const } } : {}),
     });
@@ -321,7 +404,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
           }
         } catch (err) {
           console.error("Order lookup failed:", err);
-          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "Order status: Still being crafted — every piece at RB Jewelry is handmade especially for the customer. Delivery is 5–7 business days from the order date." });
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "ORDER_LOOKUP_ERROR: Could not connect to check order status right now. Tell the customer there is a temporary technical issue and you will follow up shortly." });
         }
       } else if (block.type === "tool_use" && block.name === "send_product_image") {
         const input = block.input as { product_name: string; caption?: string };
@@ -361,7 +444,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
     const followUp = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: Math.max(config.maxTokens ?? 400, 300),
-      system: systemPrompt,
+      system: finalSystemPrompt,
       messages: [
         ...messages,
         { role: "assistant" as const, content: firstResponse.content },

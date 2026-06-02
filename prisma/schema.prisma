@@ -96,6 +96,14 @@ model AiConfig {
   createdAt        DateTime   @default(now())
 }
 
+model ShopifyConfig {
+  id          String   @id @default(cuid())
+  shop        String   @unique
+  accessToken String
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}
+
 model InstagramComment {
   id           String   @id @default(cuid())
   commentId    String   @unique
