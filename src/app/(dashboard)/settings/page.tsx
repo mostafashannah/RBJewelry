@@ -15,6 +15,8 @@ interface AiConfig {
 
 interface ConnectionStatus {
   SHOPIFY_STORE_DOMAIN: boolean;
+  SHOPIFY_CLIENT_ID: boolean;
+  SHOPIFY_CLIENT_SECRET: boolean;
   SHOPIFY_ADMIN_API_ACCESS_TOKEN: boolean;
   META_PAGE_ACCESS_TOKEN: boolean;
   META_APP_SECRET: boolean;
@@ -24,6 +26,8 @@ interface ConnectionStatus {
 
 interface ConnectionValues {
   SHOPIFY_STORE_DOMAIN: string;
+  SHOPIFY_CLIENT_ID: string;
+  SHOPIFY_CLIENT_SECRET: string;
   SHOPIFY_ADMIN_API_ACCESS_TOKEN: string;
   META_PAGE_ACCESS_TOKEN: string;
   META_APP_SECRET: string;
@@ -33,6 +37,8 @@ interface ConnectionValues {
 
 const EMPTY_CONNECTIONS: ConnectionValues = {
   SHOPIFY_STORE_DOMAIN: "",
+  SHOPIFY_CLIENT_ID: "",
+  SHOPIFY_CLIENT_SECRET: "",
   SHOPIFY_ADMIN_API_ACCESS_TOKEN: "",
   META_PAGE_ACCESS_TOKEN: "",
   META_APP_SECRET: "",
@@ -341,25 +347,49 @@ export default function SettingsPage() {
 
         {/* Shopify */}
         <div className="mb-5 pb-5 border-b border-zinc-50">
-          <p className="text-xs font-semibold text-zinc-700 mb-3">Shopify</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold text-zinc-700">Shopify</p>
+            {connStatus?.SHOPIFY_ADMIN_API_ACCESS_TOKEN ? (
+              <span className="text-xs text-green-600 font-medium">Connected ✓</span>
+            ) : (
+              <span className="text-xs text-zinc-400">Not connected</span>
+            )}
+          </div>
           <div className="space-y-3">
             <ConnectionField
               label="Store Domain"
               envKey="SHOPIFY_STORE_DOMAIN"
-              placeholder="your-store.myshopify.com"
+              placeholder="rb-jewelry-4.myshopify.com"
               isSet={connStatus?.SHOPIFY_STORE_DOMAIN ?? false}
               value={connValues.SHOPIFY_STORE_DOMAIN}
               onChange={updateConn}
             />
             <ConnectionField
-              label="Admin API Token"
-              envKey="SHOPIFY_ADMIN_API_ACCESS_TOKEN"
-              placeholder="shpat_..."
-              isSet={connStatus?.SHOPIFY_ADMIN_API_ACCESS_TOKEN ?? false}
-              value={connValues.SHOPIFY_ADMIN_API_ACCESS_TOKEN}
+              label="Client ID"
+              envKey="SHOPIFY_CLIENT_ID"
+              placeholder="Client ID from Shopify Dev Dashboard"
+              isSet={connStatus?.SHOPIFY_CLIENT_ID ?? false}
+              value={connValues.SHOPIFY_CLIENT_ID}
+              onChange={updateConn}
+            />
+            <ConnectionField
+              label="Client Secret"
+              envKey="SHOPIFY_CLIENT_SECRET"
+              placeholder="shpss_..."
+              isSet={connStatus?.SHOPIFY_CLIENT_SECRET ?? false}
+              value={connValues.SHOPIFY_CLIENT_SECRET}
               onChange={updateConn}
             />
           </div>
+          <button
+            onClick={() => window.open("/api/shopify/auth", "_blank")}
+            className="mt-3 w-full py-2 rounded-lg bg-[#96BF48] text-white text-xs font-semibold hover:bg-[#85ab3d] transition-colors"
+          >
+            {connStatus?.SHOPIFY_ADMIN_API_ACCESS_TOKEN ? "Reconnect with Shopify" : "Connect with Shopify →"}
+          </button>
+          {!connStatus?.SHOPIFY_ADMIN_API_ACCESS_TOKEN && (
+            <p className="text-xs text-zinc-400 mt-2">Save Client ID &amp; Secret first, then click Connect.</p>
+          )}
         </div>
 
         {/* Meta / Facebook */}

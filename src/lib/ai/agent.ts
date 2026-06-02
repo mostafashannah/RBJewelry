@@ -260,34 +260,63 @@ export async function processInboundMessage(conversationId: string, inboundMessa
       if (block.type === "tool_use" && block.name === "check_order_status") {
         const input = block.input as { order_number?: string; phone?: string; customer_name?: string };
         try {
-          let query = "";
-          if (input.order_number) {
-            const num = input.order_number.replace(/[^0-9]/g, "");
-            query = `name:#${num}`;
-          } else if (input.phone) {
-            const digits = input.phone.replace(/[^0-9]/g, "");
-            query = `phone:${digits}`;
-          } else if (conversation.platform === Platform.WHATSAPP) {
-            const digits = conversation.externalId.replace(/[^0-9]/g, "");
-            query = `phone:${digits}`;
-          } else if (input.customer_name) {
-            query = input.customer_name;
-          }
+          // WhatsApp: auto-use platform phone
+          const platformPhone = conversation.platform === Platform.WHATSAPP
+            ? conversation.externalId.replace(/[^0-9]/g, "")
+            : null;
+          const providedPhone = input.phone?.replace(/[^0-9]/g, "") ?? platformPhone ?? null;
 
-          if (!query) {
-            toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "No order number or phone provided. Ask the customer for their order number." });
+          // If no phone provided on non-WhatsApp platforms, ask for it
+          if (!providedPhone && conversation.platform !== Platform.WHATSAPP) {
+            toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "PHONE_REQUIRED: Ask the customer for their mobile number before checking the order." });
           } else {
-            const orders = await lookupOrders(query);
-            if (!orders.length) {
-              toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "No orders found for this customer." });
+            // Search by order number first, then fall back to phone
+            let query = "";
+            if (input.order_number) {
+              const num = input.order_number.replace(/[^0-9]/g, "");
+              query = `name:#${num}`;
+            } else if (providedPhone) {
+              query = `phone:${providedPhone}`;
+            } else if (input.customer_name) {
+              query = input.customer_name;
+            }
+
+            if (!query) {
+              toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "No order number or phone provided. Ask the customer for their mobile number." });
             } else {
-              const summary = orders.map((o) => {
-                const items = o.items.map((i) => `${i.quantity}x ${i.title}`).join(", ");
-                const phase = describeOrderPhase(o.fulfillmentStatus, o.shipmentStatus);
-                const tracking = o.trackingNumber ? ` Tracking: ${o.trackingNumber}` : "";
-                return `Order ${o.orderNumber} (${items}): ${phase}.${tracking}`;
-              }).join("\n");
-              toolResults.push({ type: "tool_result", tool_use_id: block.id, content: summary });
+              const orders = await lookupOrders(query);
+              if (!orders.length) {
+                toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "No orders found matching this customer's details." });
+              } else {
+                // If searching by order number, verify the phone matches
+                if (input.order_number && providedPhone) {
+                  const orderPhone = orders[0].phone?.replace(/[^0-9]/g, "") ?? "";
+                  const phoneMatches = orderPhone && (
+                    orderPhone === providedPhone ||
+                    orderPhone.endsWith(providedPhone.slice(-8)) ||
+                    providedPhone.endsWith(orderPhone.slice(-8))
+                  );
+                  if (!phoneMatches) {
+                    toolResults.push({ type: "tool_result", tool_use_id: block.id, content: "PHONE_MISMATCH: The mobile number provided doesn't match the order. Tell the customer kindly that you couldn't verify their order with that number." });
+                  } else {
+                    const summary = orders.map((o) => {
+                      const items = o.items.map((i) => `${i.quantity}x ${i.title}`).join(", ");
+                      const phase = describeOrderPhase(o.fulfillmentStatus, o.shipmentStatus);
+                      const tracking = o.trackingNumber ? ` Tracking: ${o.trackingNumber}` : "";
+                      return `Order ${o.orderNumber} (${items}): ${phase}.${tracking}`;
+                    }).join("\n");
+                    toolResults.push({ type: "tool_result", tool_use_id: block.id, content: summary });
+                  }
+                } else {
+                  const summary = orders.map((o) => {
+                    const items = o.items.map((i) => `${i.quantity}x ${i.title}`).join(", ");
+                    const phase = describeOrderPhase(o.fulfillmentStatus, o.shipmentStatus);
+                    const tracking = o.trackingNumber ? ` Tracking: ${o.trackingNumber}` : "";
+                    return `Order ${o.orderNumber} (${items}): ${phase}.${tracking}`;
+                  }).join("\n");
+                  toolResults.push({ type: "tool_result", tool_use_id: block.id, content: summary });
+                }
+              }
             }
           }
         } catch (err) {

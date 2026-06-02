@@ -160,6 +160,7 @@ const ORDER_LOOKUP_QUERY = `
       edges {
         node {
           name
+          phone
           createdAt
           fulfillmentStatus
           financialStatus
@@ -180,6 +181,7 @@ const ORDER_LOOKUP_QUERY = `
 
 export interface OrderLookupResult {
   orderNumber: string;
+  phone: string | null;
   createdAt: string;
   fulfillmentStatus: string | null;
   financialStatus: string;
@@ -192,7 +194,7 @@ export interface OrderLookupResult {
 export async function lookupOrders(searchQuery: string): Promise<OrderLookupResult[]> {
   const data = await shopifyGraphQL<{
     orders: { edges: { node: {
-      name: string; createdAt: string;
+      name: string; phone: string | null; createdAt: string;
       fulfillmentStatus: string | null; financialStatus: string;
       lineItems: { edges: { node: { title: string; quantity: number } }[] };
       fulfillments: { status: string; shipmentStatus: string | null; updatedAt: string; trackingInfo: { number: string; url: string }[] }[];
@@ -204,6 +206,7 @@ export async function lookupOrders(searchQuery: string): Promise<OrderLookupResu
     const tracking = lastFulfillment?.trackingInfo?.[0] ?? null;
     return {
       orderNumber: node.name,
+      phone: node.phone ?? null,
       createdAt: node.createdAt,
       fulfillmentStatus: node.fulfillmentStatus ?? null,
       financialStatus: node.financialStatus,

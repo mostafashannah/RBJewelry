@@ -6,6 +6,8 @@ import path from "path";
 // Keys we manage via the Connections UI
 const MANAGED_KEYS = [
   "SHOPIFY_STORE_DOMAIN",
+  "SHOPIFY_CLIENT_ID",
+  "SHOPIFY_CLIENT_SECRET",
   "SHOPIFY_ADMIN_API_ACCESS_TOKEN",
   "META_PAGE_ACCESS_TOKEN",
   "META_APP_SECRET",
