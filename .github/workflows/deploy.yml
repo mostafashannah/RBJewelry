@@ -5,32 +5,11 @@ on:
     branches:
       - claude/ecom-shopify-social-ai-agent-M75vk
 
+# Hostinger Node.js handles deployment automatically via GitHub integration.
+# This workflow is kept as a no-op placeholder.
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to Hostinger via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.HOSTINGER_HOST }}
-          username: ${{ secrets.HOSTINGER_USER }}
-          key: ${{ secrets.HOSTINGER_SSH_KEY }}
-          port: 65002
-          script: |
-            cd ~/rbjewelry
-            git pull origin claude/ecom-shopify-social-ai-agent-M75vk
-            npm install --omit=dev
-            npm run build
-            pm2 restart rb-jewelry || pm2 start ~/rbjewelry/start.js --name rb-jewelry
-            pm2 save
-            sleep 3
-            pm2 list
-            pm2 logs rb-jewelry --lines 20 --nostream || true
-            mkdir -p /home/u580870511/domains/rbjewelry.net/public_html/app
-            cat > /home/u580870511/domains/rbjewelry.net/public_html/app/.htaccess << 'EOF'
-            Options -MultiViews
-            RewriteEngine On
-            RewriteCond %{REQUEST_FILENAME} !-f
-            RewriteRule ^(.*)$ http://localhost:3000/$1 [P,L]
-            EOF
-            echo "✅ Deployed successfully"
+      - name: Deploy handled by Hostinger Node.js
+        run: echo "✅ Hostinger Node.js auto-deploys on push to this branch"
