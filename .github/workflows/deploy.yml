@@ -23,4 +23,11 @@ jobs:
             npm run build
             pm2 restart rb-jewelry || pm2 start start.js --name rb-jewelry
             pm2 save
+            mkdir -p /home/u580870511/domains/rbjewelry.net/public_html/app
+            cat > /home/u580870511/domains/rbjewelry.net/public_html/app/.htaccess << 'EOF'
+            Options -MultiViews
+            RewriteEngine On
+            RewriteCond %{REQUEST_FILENAME} !-f
+            RewriteRule ^(.*)$ http://localhost:3000/$1 [P,L]
+            EOF
             echo "✅ Deployed successfully"
