@@ -1,0 +1,25 @@
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches:
+      - claude/ecom-shopify-social-ai-agent-M75vk
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Hostinger via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOSTINGER_HOST }}
+          username: ${{ secrets.HOSTINGER_USER }}
+          key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          script: |
+            cd ~/rbjewelry
+            git pull origin claude/ecom-shopify-social-ai-agent-M75vk
+            npm install --omit=dev
+            npm run build
+            pm2 restart rb-jewelry || pm2 start start.js --name rb-jewelry
+            pm2 save
+            echo "✅ Deployed successfully"
