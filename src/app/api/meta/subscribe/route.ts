@@ -14,7 +14,7 @@ export async function GET() {
     );
   }
 
-  const fields = [
+  const pageFields = [
     "messages",
     "messaging_postbacks",
     "feed",
@@ -24,21 +24,42 @@ export async function GET() {
     "messaging_referrals",
   ].join(",");
 
-  const res = await fetch(
-    `https://graph.facebook.com/v19.0/${pageId}/subscribed_apps?subscribed_fields=${fields}&access_token=${pageToken}`,
+  const pageRes = await fetch(
+    `https://graph.facebook.com/v19.0/${pageId}/subscribed_apps?subscribed_fields=${pageFields}&access_token=${pageToken}`,
     { method: "POST" }
   );
-  const json = await res.json();
+  const pageJson = await pageRes.json();
 
-  if (json.error) {
-    return NextResponse.json({ error: json.error.message, detail: json.error }, { status: 400 });
+  if (pageJson.error) {
+    return NextResponse.json({ error: pageJson.error.message, detail: pageJson.error }, { status: 400 });
   }
 
-  // Also check current subscriptions so we can see what's active
+  // Subscribe the Instagram Business Account to messages webhooks.
+  // This ensures Instagram DMs are delivered even when Meta routes them
+  // through the Instagram product webhook (object: "instagram").
+  const igAccountId = process.env.META_INSTAGRAM_BUSINESS_ACCOUNT_ID;
+  let igJson: Record<string, unknown> = { skipped: "META_INSTAGRAM_BUSINESS_ACCOUNT_ID not set" };
+  if (igAccountId) {
+    const igFields = ["messages", "messaging_postbacks"].join(",");
+    const igRes = await fetch(
+      `https://graph.facebook.com/v19.0/${igAccountId}/subscribed_apps?subscribed_fields=${igFields}&access_token=${pageToken}`,
+      { method: "POST" }
+    );
+    igJson = await igRes.json();
+  }
+
+  // Check current subscriptions so we can see what's active
   const check = await fetch(
     `https://graph.facebook.com/v19.0/${pageId}/subscribed_apps?access_token=${pageToken}`
   );
   const checkJson = await check.json();
 
-  return NextResponse.json({ ok: true, result: json, pageId, currentSubscriptions: checkJson });
+  return NextResponse.json({
+    ok: true,
+    pageSubscription: pageJson,
+    instagramSubscription: igJson,
+    pageId,
+    igAccountId: igAccountId ?? null,
+    currentPageSubscriptions: checkJson,
+  });
 }
