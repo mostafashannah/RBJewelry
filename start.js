@@ -1,17 +1,22 @@
-// Hostinger Node.js entry point — runs the Next.js standalone server
 const { createServer } = require("http");
 const { parse } = require("url");
-const next = require("./.next/standalone/node_modules/next");
+const next = require("next");
 
-const app = next({ dir: __dirname, dev: false });
+const port = parseInt(process.env.PORT || "3000", 10);
+const app = next({ dev: false, hostname: "0.0.0.0", port });
 const handle = app.getRequestHandler();
-const PORT = process.env.PORT || 3000;
 
 app.prepare().then(() => {
-  createServer((req, res) => {
-    const parsedUrl = parse(req.url, true);
-    handle(req, res, parsedUrl);
-  }).listen(PORT, () => {
-    console.log(`> RB Jewelry running on port ${PORT}`);
+  createServer(async (req, res) => {
+    try {
+      const parsedUrl = parse(req.url, true);
+      await handle(req, res, parsedUrl);
+    } catch (err) {
+      console.error("Error:", req.url, err);
+      res.statusCode = 500;
+      res.end("internal server error");
+    }
+  }).listen(port, () => {
+    console.log(`> RB Jewelry ready on port ${port}`);
   });
 });
