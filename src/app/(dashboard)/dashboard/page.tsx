@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { getOrders } from "@/lib/shopify/admin";
 import { ConversationStatus } from "@prisma/client";
