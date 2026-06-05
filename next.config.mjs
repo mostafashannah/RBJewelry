@@ -10,6 +10,14 @@ const nextConfig = {
   },
   async headers() {
     return [
+      // Prevent CDN from caching RSC payloads as full-page HTML
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "Vary", value: "RSC, Next-Router-Prefetch, Next-Router-State-Tree, Accept" },
+          { key: "Cache-Control", value: "no-store, must-revalidate" },
+        ],
+      },
       {
         source: "/api/webhooks/:path*",
         headers: [{ key: "Cache-Control", value: "no-store" }],

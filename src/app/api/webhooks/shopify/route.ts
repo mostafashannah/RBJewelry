@@ -62,7 +62,6 @@ export async function POST(req: NextRequest) {
     topic === "fulfillments/create" ||
     topic === "fulfillments/update"
   ) {
-    // fulfillments/create and fulfillments/update payloads wrap the order differently
     const order = (topic.startsWith("fulfillments/")
       ? (payload as { order_id: number } & ShopifyOrderPayload)
       : payload) as ShopifyOrderPayload;
@@ -90,6 +89,17 @@ export async function POST(req: NextRequest) {
         createdAt: new Date(order.created_at),
       },
     });
+
+    // Auto-mark inventory items as SOLD when order is fulfilled AND paid
+    const isPaid = order.financial_status === "paid";
+    const isFulfilled = order.fulfillment_status === "fulfilled";
+    if (isPaid && isFulfilled && order.order_number) {
+      const orderNoStr = String(order.order_number);
+      await db.inventoryItem.updateMany({
+        where: { orderNo: orderNoStr, status: { not: "SOLD" } },
+        data: { status: "SOLD" },
+      });
+    }
   }
 
   return NextResponse.json({ ok: true });

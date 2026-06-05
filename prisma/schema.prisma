@@ -185,20 +185,24 @@ enum InventoryStatus {
 model InventoryItem {
   id        String          @id @default(cuid())
   name      String
+  sku       String?
   category  String
   material  String          @default("Sterling Silver")
   weightG   Float
+  colors    String[]
   quantity  Int             @default(1)
   costEGP   Float?
   priceEGP  Float?
   photoUrl  String?
   status    InventoryStatus @default(IN_STOCK)
+  orderNo   String?
   notes     String?         @db.Text
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
 
   @@index([status])
   @@index([category])
+  @@index([orderNo])
 }
 
 model Expense {

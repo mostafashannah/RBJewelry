@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, category, material, weightG, quantity, costEGP, priceEGP, photoUrl, notes } = body;
+  const { name, sku, category, material, weightG, colors, quantity, costEGP, priceEGP, photoUrl, orderNo, notes } = body;
 
   if (!name || !category || weightG == null) {
     return NextResponse.json({ error: "name, category, and weightG are required" }, { status: 400 });
@@ -30,13 +30,16 @@ export async function POST(req: NextRequest) {
   const item = await db.inventoryItem.create({
     data: {
       name,
+      sku: sku || null,
       category,
       material: material ?? "Sterling Silver",
       weightG: parseFloat(weightG),
+      colors: Array.isArray(colors) ? colors : [],
       quantity: parseInt(quantity ?? "1"),
       costEGP: costEGP ? parseFloat(costEGP) : null,
       priceEGP: priceEGP ? parseFloat(priceEGP) : null,
       photoUrl: photoUrl ?? null,
+      orderNo: orderNo || null,
       notes: notes ?? null,
     },
   });

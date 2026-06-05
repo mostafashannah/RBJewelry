@@ -26,15 +26,18 @@ export async function POST(req: NextRequest) {
           },
           {
             type: "text",
-            text: `This is a photo of a jewelry item or its label/tag. Extract the following information if visible:
+            text: `This is a photo of a jewelry item or its label/tag. Extract the following if visible:
 - name: item description (e.g. "Silver Ring with Zircon", "Gold Necklace")
-- sku: any code, SKU, barcode number, or item number visible
-- weightG: weight in grams (look for numbers followed by g, gm, gram, جرام, غ)
+- sku: any code, SKU, barcode number, or item number on the label
+- weightG: weight in grams (numbers followed by g, gm, gram, جرام, غ)
 - category: one of Ring, Necklace, Bracelet, Earrings, Anklet, Set, Other
 - material: one of Sterling Silver, Gold-Plated Silver, Rose Gold-Plated, 18K Gold, Other
+- colors: array of colors visible on the item (e.g. ["Silver", "Gold", "Rose Gold", "Black", "White", "Blue", "Red", "Green"]) — empty array if single/standard color
+- priceEGP: selling price in EGP if visible on the tag (number only, no currency symbol)
 
-Return ONLY valid JSON like: {"name":"...","sku":"...","weightG":4.5,"category":"Ring","material":"Sterling Silver"}
-Use null for any field you cannot see clearly. No extra text.`,
+Return ONLY valid JSON:
+{"name":"...","sku":"...","weightG":4.5,"category":"Ring","material":"Sterling Silver","colors":["Silver"],"priceEGP":850}
+Use null for fields you cannot see. Use [] for colors if none visible. No extra text.`,
           },
         ],
       },
