@@ -175,6 +175,32 @@ model PushSubscription {
   createdAt DateTime @default(now())
 }
 
+enum InventoryStatus {
+  IN_STOCK
+  SOLD
+  RESERVED
+  DAMAGED
+}
+
+model InventoryItem {
+  id        String          @id @default(cuid())
+  name      String
+  category  String
+  material  String          @default("Sterling Silver")
+  weightG   Float
+  quantity  Int             @default(1)
+  costEGP   Float?
+  priceEGP  Float?
+  photoUrl  String?
+  status    InventoryStatus @default(IN_STOCK)
+  notes     String?         @db.Text
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([status])
+  @@index([category])
+}
+
 model Expense {
   id          String   @id @default(cuid())
   category    String

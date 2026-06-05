@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -11,12 +11,15 @@ import {
   Wallet,
   Settings,
   ClipboardList,
+  Boxes,
+  LogOut,
 } from "lucide-react";
 
 const nav = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/inbox", label: "Inbox", icon: MessageSquare },
   { href: "/products", label: "Products", icon: Package },
+  { href: "/inventory", label: "Inventory", icon: Boxes },
   { href: "/orders", label: "Orders", icon: ShoppingBag },
   { href: "/ads", label: "Ads", icon: Megaphone },
   { href: "/analytics", label: "Analytics", icon: BarChart2 },
@@ -27,6 +30,12 @@ const nav = [
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const logout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+  };
 
   return (
     <div className="flex h-screen bg-[#fafafa]">
@@ -56,8 +65,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             );
           })}
         </nav>
-        <div className="p-4 border-t border-zinc-100">
+        <div className="p-4 border-t border-zinc-100 flex items-center justify-between">
           <p className="text-xs text-zinc-400">rbjewelry.co</p>
+          <button onClick={logout} className="text-zinc-400 hover:text-zinc-700 transition-colors">
+            <LogOut size={14} />
+          </button>
         </div>
       </aside>
 
