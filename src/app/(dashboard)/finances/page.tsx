@@ -26,7 +26,8 @@ export default function FinancesPage() {
 
   const loadExpenses = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/finances/expenses?month=${month}`);
+    const url = month === "all" ? `/api/finances/expenses` : `/api/finances/expenses?month=${month}`;
+    const res = await fetch(url);
     const data = await res.json();
     setExpenses(data.expenses ?? []);
     setLoading(false);
@@ -74,12 +75,17 @@ export default function FinancesPage() {
           <p className="text-sm text-zinc-500 mt-1">Track expenses and export to Google Sheets</p>
         </div>
         <div className="flex gap-2">
-          <input
-            type="month"
+          <select
             value={month}
             onChange={(e) => setMonth(e.target.value)}
-            className="text-xs border border-zinc-200 rounded-lg px-3 py-1.5 focus:outline-none"
-          />
+            className="text-xs border border-zinc-200 rounded-lg px-3 py-1.5 focus:outline-none bg-white"
+          >
+            <option value="all">All time</option>
+            <option value="2026-06">June 2026</option>
+            <option value="2026-05">May 2026</option>
+            <option value="2026-04">April 2026</option>
+            <option value="2026-03">March 2026</option>
+          </select>
           <button
             onClick={() => setShowAdd(true)}
             className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-zinc-900 text-white rounded-lg hover:bg-zinc-700 transition-colors"
@@ -110,8 +116,8 @@ export default function FinancesPage() {
           <p className="text-xl font-semibold text-zinc-900 mt-1">{expenses.length}</p>
         </div>
         <div className="bg-white border border-zinc-100 rounded-xl p-4">
-          <p className="text-xs text-zinc-400">Month</p>
-          <p className="text-xl font-semibold text-zinc-900 mt-1">{month}</p>
+          <p className="text-xs text-zinc-400">Period</p>
+          <p className="text-xl font-semibold text-zinc-900 mt-1">{month === "all" ? "All time" : month}</p>
         </div>
       </div>
 
@@ -176,7 +182,7 @@ export default function FinancesPage() {
       {loading ? (
         <p className="text-sm text-zinc-400 text-center py-10">Loading…</p>
       ) : expenses.length === 0 ? (
-        <p className="text-sm text-zinc-400 text-center py-10">No expenses for {month}.</p>
+        <p className="text-sm text-zinc-400 text-center py-10">No expenses for {month === "all" ? "this period" : month}.</p>
       ) : (
         <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden">
           <table className="w-full text-sm">
