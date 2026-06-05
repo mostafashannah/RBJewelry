@@ -34,19 +34,11 @@ export async function GET() {
     return NextResponse.json({ error: pageJson.error.message, detail: pageJson.error }, { status: 400 });
   }
 
-  // Subscribe the Instagram Business Account to messages webhooks.
-  // This ensures Instagram DMs are delivered even when Meta routes them
-  // through the Instagram product webhook (object: "instagram").
+  // Instagram DMs are delivered via the app-level webhook subscription
+  // (object: "instagram", field: "messages") which is configured in Meta Developer Console.
+  // The Page subscription above also covers IG DMs for connected accounts.
   const igAccountId = process.env.META_INSTAGRAM_BUSINESS_ACCOUNT_ID;
-  let igJson: Record<string, unknown> = { skipped: "META_INSTAGRAM_BUSINESS_ACCOUNT_ID not set" };
-  if (igAccountId) {
-    const igFields = ["messages", "messaging_postbacks"].join(",");
-    const igRes = await fetch(
-      `https://graph.facebook.com/v19.0/${igAccountId}/subscribed_apps?subscribed_fields=${igFields}&access_token=${pageToken}`,
-      { method: "POST" }
-    );
-    igJson = await igRes.json();
-  }
+  const igJson: Record<string, unknown> = { note: "IG DMs handled via app-level webhook subscription", igAccountId: igAccountId ?? null };
 
   // Check current subscriptions so we can see what's active
   const check = await fetch(

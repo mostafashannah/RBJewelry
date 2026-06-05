@@ -75,6 +75,23 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
+async function fetchFBProfile(userId: string): Promise<{ displayName: string | null; avatarUrl: string | null }> {
+  const token = process.env.META_PAGE_ACCESS_TOKEN;
+  const pageId = process.env.META_FACEBOOK_PAGE_ID;
+  if (!token || !pageId) return { displayName: null, avatarUrl: null };
+  try {
+    const res = await fetch(
+      `https://graph.facebook.com/v19.0/${pageId}/conversations?user_id=${userId}&fields=participants&access_token=${token}`
+    );
+    const data = await res.json() as { data?: { participants?: { data?: { id: string; name?: string; profile_pic?: string }[] } }[] };
+    const participants = data.data?.[0]?.participants?.data ?? [];
+    const customer = participants.find((p) => p.id !== pageId);
+    return { displayName: customer?.name ?? null, avatarUrl: customer?.profile_pic ?? null };
+  } catch {
+    return { displayName: null, avatarUrl: null };
+  }
+}
+
 async function handleFacebookDM(value: Record<string, unknown>) {
   const sender = (value.sender as { id: string })?.id;
   const msg = value.message as {
@@ -90,10 +107,25 @@ async function handleFacebookDM(value: Record<string, unknown>) {
   const body = msg?.text ?? (imageUrl ? "أرسل العميل صورة / Customer sent a photo" : null);
   if (!body && !imageUrl) return;
 
+  const existing = await db.conversation.findUnique({
+    where: { platform_externalId: { platform: Platform.FACEBOOK_DM, externalId: sender } },
+  });
+
+  let displayName: string | null = null;
+  let avatarUrl: string | null = null;
+  if (!existing || !existing.displayName) {
+    ({ displayName, avatarUrl } = await fetchFBProfile(sender));
+  }
+
   const conversation = await db.conversation.upsert({
     where: { platform_externalId: { platform: Platform.FACEBOOK_DM, externalId: sender } },
-    update: { lastMessageAt: new Date(), unreadCount: { increment: 1 } },
-    create: { platform: Platform.FACEBOOK_DM, externalId: sender, unreadCount: 1 },
+    update: {
+      lastMessageAt: new Date(),
+      unreadCount: { increment: 1 },
+      ...(displayName ? { displayName } : {}),
+      ...(avatarUrl ? { avatarUrl } : {}),
+    },
+    create: { platform: Platform.FACEBOOK_DM, externalId: sender, unreadCount: 1, displayName, avatarUrl },
   });
 
   if (msg?.mid) {
@@ -114,6 +146,21 @@ async function handleFacebookDM(value: Record<string, unknown>) {
   processInboundMessage(conversation.id, message.id).catch(console.error);
 }
 
+async function fetchIGProfile(userId: string): Promise<{ displayName: string | null; avatarUrl: string | null }> {
+  const token = process.env.META_PAGE_ACCESS_TOKEN;
+  if (!token) return { displayName: null, avatarUrl: null };
+  try {
+    const res = await fetch(
+      `https://graph.facebook.com/v19.0/${userId}?fields=name,username,profile_pic&access_token=${token}`
+    );
+    const data = await res.json() as { name?: string; username?: string; profile_pic?: string };
+    const displayName = data.username ? `@${data.username}` : (data.name ?? null);
+    return { displayName, avatarUrl: data.profile_pic ?? null };
+  } catch {
+    return { displayName: null, avatarUrl: null };
+  }
+}
+
 async function handleInstagramDM(value: Record<string, unknown>) {
   const sender = (value.sender as { id: string })?.id;
   const msg = value.message as {
@@ -128,10 +175,25 @@ async function handleInstagramDM(value: Record<string, unknown>) {
   const body = msg?.text ?? (imageUrl ? "أرسل العميل صورة / Customer sent a photo" : null);
   if (!body && !imageUrl) return;
 
+  const existing = await db.conversation.findUnique({
+    where: { platform_externalId: { platform: Platform.INSTAGRAM_DM, externalId: sender } },
+  });
+
+  let displayName: string | null = null;
+  let avatarUrl: string | null = null;
+  if (!existing || !existing.displayName) {
+    ({ displayName, avatarUrl } = await fetchIGProfile(sender));
+  }
+
   const conversation = await db.conversation.upsert({
     where: { platform_externalId: { platform: Platform.INSTAGRAM_DM, externalId: sender } },
-    update: { lastMessageAt: new Date(), unreadCount: { increment: 1 } },
-    create: { platform: Platform.INSTAGRAM_DM, externalId: sender, unreadCount: 1 },
+    update: {
+      lastMessageAt: new Date(),
+      unreadCount: { increment: 1 },
+      ...(displayName ? { displayName } : {}),
+      ...(avatarUrl ? { avatarUrl } : {}),
+    },
+    create: { platform: Platform.INSTAGRAM_DM, externalId: sender, unreadCount: 1, displayName, avatarUrl },
   });
 
   if (msg?.mid) {
