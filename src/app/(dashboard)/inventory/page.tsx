@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Plus, Camera, X, Scale, Tag, Package, Loader2, CheckCircle,
   Trash2, Edit2, Upload, FileSpreadsheet, Sparkles, AlertCircle,
-  TrendingUp, RefreshCw, Hash, ShoppingBag,
+  TrendingUp, RefreshCw, Hash, ShoppingBag, LayoutGrid, List, Download,
 } from "lucide-react";
 
 const CATEGORIES = ["Ring", "Necklace", "Bracelet", "Earrings", "Anklet", "Set", "Other"];
@@ -51,6 +51,7 @@ export default function InventoryPage() {
   const [editItem, setEditItem] = useState<Item | null>(null);
   const [silver, setSilver] = useState<SilverData | null>(null);
   const [silverLoading, setSilverLoading] = useState(false);
+  const [view, setView] = useState<"grid" | "list">("grid");
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Import sheet state
@@ -198,10 +199,19 @@ export default function InventoryPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-lg font-semibold text-zinc-900">Inventory</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {/* View toggle */}
+          <div className="flex border border-zinc-200 rounded-xl overflow-hidden">
+            <button onClick={() => setView("grid")} className={`p-2 ${view === "grid" ? "bg-zinc-900 text-white" : "text-zinc-400 hover:bg-zinc-50"}`}><LayoutGrid size={14} /></button>
+            <button onClick={() => setView("list")} className={`p-2 ${view === "list" ? "bg-zinc-900 text-white" : "text-zinc-400 hover:bg-zinc-50"}`}><List size={14} /></button>
+          </div>
+          <a href="/api/inventory/export" download
+            className="flex items-center gap-1.5 border border-zinc-200 text-zinc-600 text-sm px-3 py-2 rounded-xl hover:bg-zinc-50 transition-colors">
+            <Download size={14} /> Export
+          </a>
           <button onClick={() => { setShowImport(true); setImportDone(null); setImportPreview(null); setImportFile(null); }}
             className="flex items-center gap-1.5 border border-zinc-200 text-zinc-600 text-sm px-3 py-2 rounded-xl hover:bg-zinc-50 transition-colors">
-            <FileSpreadsheet size={14} /> Import Sheet
+            <FileSpreadsheet size={14} /> Import
           </button>
           <button onClick={openAdd}
             className="flex items-center gap-1.5 bg-zinc-900 text-white text-sm px-4 py-2 rounded-xl hover:bg-zinc-700 transition-colors">
@@ -267,12 +277,13 @@ export default function InventoryPage() {
         ))}
       </div>
 
-      {/* Grid */}
+      {/* Items */}
       {loading ? (
         <div className="flex items-center justify-center h-40"><Loader2 size={18} className="text-zinc-300 animate-spin" /></div>
       ) : items.length === 0 ? (
         <div className="text-center py-20 text-zinc-400 text-sm">No items yet.</div>
-      ) : (
+      ) : view === "grid" ? (
+        /* Grid view */
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {items.map((item) => (
             <div key={item.id} className="bg-white border border-zinc-100 rounded-2xl overflow-hidden group">
@@ -301,9 +312,7 @@ export default function InventoryPage() {
                   <span className="text-[10px] text-zinc-300">·</span>
                   <Tag size={10} className="text-zinc-300" />
                   <span className="text-[10px] text-zinc-400">{item.category}</span>
-                  {item.colors?.length > 0 && (
-                    <span className="text-[10px] text-zinc-400">· {item.colors.join(", ")}</span>
-                  )}
+                  {item.colors?.length > 0 && <span className="text-[10px] text-zinc-400">· {item.colors.join(", ")}</span>}
                 </div>
                 {item.priceEGP && <p className="text-xs font-semibold text-zinc-900 mt-1">{item.priceEGP.toLocaleString()} EGP</p>}
                 <div className="mt-2">
@@ -315,6 +324,69 @@ export default function InventoryPage() {
               </div>
             </div>
           ))}
+        </div>
+      ) : (
+        /* List view */
+        <div className="bg-white border border-zinc-100 rounded-2xl overflow-hidden">
+          <table className="w-full text-xs">
+            <thead className="bg-zinc-50 border-b border-zinc-100">
+              <tr>
+                <th className="text-left px-4 py-3 text-zinc-500 font-medium w-12">Photo</th>
+                <th className="text-left px-3 py-3 text-zinc-500 font-medium">SKU</th>
+                <th className="text-left px-3 py-3 text-zinc-500 font-medium">Name</th>
+                <th className="text-left px-3 py-3 text-zinc-500 font-medium">Color</th>
+                <th className="text-left px-3 py-3 text-zinc-500 font-medium">Weight</th>
+                <th className="text-left px-3 py-3 text-zinc-500 font-medium">Cost</th>
+                <th className="text-left px-3 py-3 text-zinc-500 font-medium">Price</th>
+                <th className="text-left px-3 py-3 text-zinc-500 font-medium">Order</th>
+                <th className="text-left px-3 py-3 text-zinc-500 font-medium">Status</th>
+                <th className="px-3 py-3 w-16"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, i) => (
+                <tr key={item.id} className={`border-t border-zinc-50 hover:bg-zinc-50/50 ${i % 2 === 0 ? "" : "bg-zinc-50/30"}`}>
+                  <td className="px-4 py-2">
+                    {item.photoUrl ? (
+                      <img src={item.photoUrl} alt={item.name} className="w-9 h-9 rounded-lg object-cover" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-lg bg-zinc-100 flex items-center justify-center">
+                        <Package size={14} className="text-zinc-300" />
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-zinc-500 whitespace-nowrap">{item.sku ?? "—"}</td>
+                  <td className="px-3 py-2 font-medium text-zinc-900 max-w-[160px]">
+                    <p className="truncate">{item.name}</p>
+                    <p className="text-[10px] text-zinc-400 font-normal">{item.category}</p>
+                  </td>
+                  <td className="px-3 py-2 text-zinc-500">{item.colors?.join(", ") || "—"}</td>
+                  <td className="px-3 py-2 text-zinc-500 whitespace-nowrap">{item.weightG}g</td>
+                  <td className="px-3 py-2 text-zinc-500">{item.costEGP ? `${item.costEGP.toLocaleString()}` : "—"}</td>
+                  <td className="px-3 py-2 font-medium text-zinc-900">{item.priceEGP ? `${item.priceEGP.toLocaleString()}` : "—"}</td>
+                  <td className="px-3 py-2 text-zinc-500">
+                    {item.orderNo ? (
+                      <span className="flex items-center gap-1 text-amber-600">
+                        <ShoppingBag size={10} />#{item.orderNo}
+                      </span>
+                    ) : "—"}
+                  </td>
+                  <td className="px-3 py-2">
+                    <select value={item.status} onChange={(e) => changeStatus(item.id, e.target.value)}
+                      className={`text-[10px] px-2 py-0.5 rounded-full border-0 font-medium cursor-pointer ${STATUS_COLORS[item.status]}`}>
+                      {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex gap-1">
+                      <button onClick={() => openEdit(item)} className="p-1 text-zinc-400 hover:text-zinc-700"><Edit2 size={13} /></button>
+                      <button onClick={() => deleteItem(item.id)} className="p-1 text-zinc-400 hover:text-red-500"><Trash2 size={13} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
