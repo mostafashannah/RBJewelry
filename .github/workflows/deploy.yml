@@ -5,11 +5,123 @@ on:
     branches:
       - claude/ecom-shopify-social-ai-agent-M75vk
 
-# Hostinger Node.js handles deployment automatically via GitHub integration.
-# This workflow is kept as a no-op placeholder.
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy handled by Hostinger Node.js
-        run: echo "✅ Hostinger Node.js auto-deploys on push to this branch"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install hostinger-api-mcp
+        run: npm install -g hostinger-api-mcp@0.1.28
+
+      - name: Create source archive
+        run: |
+          tar -czf /tmp/rbjewelry-deploy.tar.gz \
+            src public prisma package.json package-lock.json \
+            next.config.mjs tailwind.config.ts tsconfig.json \
+            postcss.config.mjs start.js
+          ls -lh /tmp/rbjewelry-deploy.tar.gz
+
+      - name: Deploy to Hostinger
+        env:
+          APITOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+        run: |
+          node - <<'EOF'
+          const { spawn } = require('child_process');
+
+          const mcp = spawn('hostinger-api-mcp', [], {
+            env: { ...process.env },
+            stdio: ['pipe', 'pipe', 'inherit'],
+          });
+
+          let buffer = '';
+          const pending = new Map();
+          let msgId = 0;
+
+          mcp.stdout.on('data', (chunk) => {
+            buffer += chunk.toString();
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              try {
+                const msg = JSON.parse(line);
+                if (msg.id && pending.has(msg.id)) {
+                  pending.get(msg.id)(msg);
+                  pending.delete(msg.id);
+                }
+              } catch {}
+            }
+          });
+
+          const send = (method, params) => new Promise((resolve) => {
+            msgId++;
+            pending.set(msgId, resolve);
+            mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: msgId, method, params }) + '\n');
+          });
+
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+          async function run() {
+            await send('initialize', {
+              protocolVersion: '2024-11-05',
+              capabilities: {},
+              clientInfo: { name: 'github-actions', version: '1.0' },
+            });
+
+            console.log('Deploying to app.rbjewelry.net...');
+            const deployResult = await send('tools/call', {
+              name: 'hosting_deployJsApplication',
+              arguments: {
+                domain: 'app.rbjewelry.net',
+                archivePath: '/tmp/rbjewelry-deploy.tar.gz',
+                removeArchive: true,
+              },
+            });
+
+            const content = deployResult?.result?.content?.[0]?.text;
+            const parsed = content ? JSON.parse(content) : {};
+            const buildUuid = parsed?.build?.data?.uuid;
+            const buildState = parsed?.build?.data?.state;
+            console.log('Build UUID:', buildUuid, '| State:', buildState);
+
+            if (!buildUuid) {
+              console.error('Deploy failed:', JSON.stringify(parsed, null, 2));
+              process.exit(1);
+            }
+
+            // Poll until done
+            let state = buildState;
+            let attempts = 0;
+            while ((state === 'pending' || state === 'running') && attempts < 30) {
+              await sleep(20000);
+              attempts++;
+              const pollResult = await send('tools/call', {
+                name: 'hosting_listJsDeployments',
+                arguments: { domain: 'app.rbjewelry.net', states: ['pending', 'running', 'completed', 'failed'] },
+              });
+              const pollContent = pollResult?.result?.content?.[0]?.text;
+              const pollData = pollContent ? JSON.parse(pollContent) : {};
+              const deployments = pollData?.deployments?.data ?? [];
+              const current = deployments.find((d) => d.uuid === buildUuid);
+              state = current?.state ?? state;
+              console.log(`[${attempts}] Build state: ${state}`);
+            }
+
+            if (state !== 'completed') {
+              console.error('Build did not complete. Final state:', state);
+              process.exit(1);
+            }
+
+            console.log('Deployed successfully to https://app.rbjewelry.net');
+            mcp.stdin.end();
+          }
+
+          run().catch((err) => { console.error(err); process.exit(1); });
+          EOF
