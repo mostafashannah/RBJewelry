@@ -31,7 +31,7 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <div className="mb-8">
         <h1 className="text-xl font-semibold text-zinc-900">Overview</h1>
         <p className="text-sm text-zinc-500 mt-1">Welcome back to RB Jewelry dashboard</p>

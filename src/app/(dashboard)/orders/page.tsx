@@ -16,7 +16,7 @@ export default async function OrdersPage() {
   });
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-zinc-900">Orders</h1>
         <p className="text-sm text-zinc-500 mt-1">{orders.length} orders</p>
@@ -25,8 +25,8 @@ export default async function OrdersPage() {
       {orders.length === 0 ? (
         <p className="text-sm text-zinc-400 text-center py-20">No orders found. Seed the database first.</p>
       ) : (
-        <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden overflow-x-auto">
+          <table className="w-full text-sm min-w-[600px]">
             <thead>
               <tr className="border-b border-zinc-100">
                 {["Order", "Customer", "Total", "Payment", "Fulfillment", "Date"].map((h) => (

@@ -83,7 +83,7 @@ export default function FinancesPage() {
   const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-4 md:p-8 max-w-4xl">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-zinc-900">Finances</h1>
@@ -250,8 +250,8 @@ export default function FinancesPage() {
       ) : expenses.length === 0 ? (
         <p className="text-sm text-zinc-400 text-center py-10">No expenses for {month === "all" ? "this period" : month}.</p>
       ) : (
-        <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden overflow-x-auto">
+          <table className="w-full text-sm min-w-[480px]">
             <thead>
               <tr className="border-b border-zinc-100">
                 {["Category", "Amount", "Description", "Date"].map((h) => (

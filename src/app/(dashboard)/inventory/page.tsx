@@ -199,7 +199,7 @@ export default function InventoryPage() {
   };
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-lg font-semibold text-zinc-900">Inventory</h1>
@@ -333,8 +333,8 @@ export default function InventoryPage() {
         </div>
       ) : (
         /* List view */
-        <div className="bg-white border border-zinc-100 rounded-2xl overflow-hidden">
-          <table className="w-full text-xs">
+        <div className="bg-white border border-zinc-100 rounded-2xl overflow-hidden overflow-x-auto">
+          <table className="w-full text-xs min-w-[700px]">
             <thead className="bg-zinc-50 border-b border-zinc-100">
               <tr>
                 <th className="text-left px-4 py-3 text-zinc-500 font-medium w-12">Photo</th>

@@ -190,10 +190,10 @@ export default function SettingsPage() {
     setConfig({ ...config, platforms });
   };
 
-  if (!config) return <div className="p-8 text-sm text-zinc-400">Loading settings…</div>;
+  if (!config) return <div className="p-4 md:p-8 text-sm text-zinc-400">Loading settings…</div>;
 
   return (
-    <div className="p-8 max-w-2xl space-y-4">
+    <div className="p-4 md:p-8 max-w-2xl space-y-4">
       <div className="mb-2">
         <h1 className="text-xl font-semibold text-zinc-900">Settings</h1>
         <p className="text-sm text-zinc-500 mt-1">Configure AI agent and integrations</p>

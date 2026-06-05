@@ -103,7 +103,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 overflow-y-auto p-8">
+      <div className="flex-1 overflow-y-auto p-4 md:p-8">
         {!report ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <p className="text-zinc-400 text-sm">No report selected.</p>

@@ -35,7 +35,7 @@ export default function AnalyticsPage() {
   };
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="p-4 md:p-8 max-w-3xl">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-zinc-900">AI Analytics</h1>
         <p className="text-sm text-zinc-500 mt-1">Ask anything about your business</p>
