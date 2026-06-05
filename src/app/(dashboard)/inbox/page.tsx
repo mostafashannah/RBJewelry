@@ -52,11 +52,14 @@ export default function InboxPage() {
   const [sending, setSending] = useState(false);
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadConversations = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     const res = await fetch("/api/inbox");
     const data = await res.json();
+    if (!res.ok) setLoadError(data.error ?? "Failed to load");
     setConversations(data.conversations ?? []);
     setLoading(false);
   }, []);
@@ -138,6 +141,8 @@ export default function InboxPage() {
             <div className="flex items-center justify-center h-20">
               <RefreshCw size={14} className="text-zinc-400 animate-spin" />
             </div>
+          ) : loadError ? (
+            <p className="text-xs text-red-400 text-center mt-8 px-4">{loadError}</p>
           ) : filtered.length === 0 ? (
             <p className="text-xs text-zinc-400 text-center mt-8">No conversations yet</p>
           ) : (

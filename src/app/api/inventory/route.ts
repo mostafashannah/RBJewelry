@@ -4,19 +4,25 @@ import { db } from "@/lib/db";
 import { InventoryStatus } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = req.nextUrl;
-  const status = searchParams.get("status") as InventoryStatus | null;
-  const category = searchParams.get("category");
+  try {
+    const { searchParams } = req.nextUrl;
+    const status = searchParams.get("status") as InventoryStatus | null;
+    const category = searchParams.get("category");
 
-  const where: Record<string, unknown> = {};
-  if (status) where.status = status;
-  if (category) where.category = category;
+    const where: Record<string, unknown> = {};
+    if (status) where.status = status;
+    if (category) where.category = category;
 
-  const items = await db.inventoryItem.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-  });
-  return NextResponse.json({ items });
+    const items = await db.inventoryItem.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+    });
+    return NextResponse.json({ items });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[inventory] GET failed:", msg);
+    return NextResponse.json({ error: msg, items: [] }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {

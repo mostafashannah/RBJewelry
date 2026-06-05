@@ -63,11 +63,15 @@ export default function InventoryPage() {
   const [importDone, setImportDone] = useState<number | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     const params = filterStatus !== "all" ? `?status=${filterStatus}` : "";
     const res = await fetch(`/api/inventory${params}`);
     const data = await res.json();
+    if (!res.ok) setLoadError(data.error ?? "Failed to load");
     setItems(data.items ?? []);
     setLoading(false);
   }, [filterStatus]);
@@ -280,6 +284,8 @@ export default function InventoryPage() {
       {/* Items */}
       {loading ? (
         <div className="flex items-center justify-center h-40"><Loader2 size={18} className="text-zinc-300 animate-spin" /></div>
+      ) : loadError ? (
+        <div className="text-center py-20 text-red-400 text-sm">{loadError}</div>
       ) : items.length === 0 ? (
         <div className="text-center py-20 text-zinc-400 text-sm">No items yet.</div>
       ) : view === "grid" ? (
