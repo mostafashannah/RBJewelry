@@ -23,6 +23,19 @@ if (!fs.existsSync(path.join(__dirname, ".next", "BUILD_ID"))) {
   }
 }
 
+// Sync database schema (safely adds missing tables/columns on every restart)
+try {
+  console.log("> Syncing database schema...");
+  execSync("npx prisma db push --accept-data-loss --skip-generate", {
+    stdio: "inherit",
+    cwd: __dirname,
+    env: { ...process.env },
+  });
+  console.log("> Database schema up to date.");
+} catch (err) {
+  console.error("> DB sync failed (continuing anyway):", err.message);
+}
+
 const app = next({ dev: false, hostname: "0.0.0.0", port });
 const handle = app.getRequestHandler();
 
