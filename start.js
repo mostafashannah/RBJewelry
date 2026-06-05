@@ -5,6 +5,9 @@ const fs = require("fs");
 const path = require("path");
 const next = require("next");
 
+// Load .env.local explicitly so env vars are available regardless of how the host starts the app
+require("dotenv").config({ path: path.join(__dirname, ".env.local") });
+
 const port = parseInt(process.env.PORT || "3000", 10);
 
 // Build the app if no production build exists (e.g. first deploy on Hostinger)
