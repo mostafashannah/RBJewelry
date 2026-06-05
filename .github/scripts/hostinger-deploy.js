@@ -51,14 +51,27 @@ async function run() {
   });
 
   console.log(`Uploading and deploying to ${DOMAIN}...`);
-  const deployResult = await send('tools/call', {
-    name: 'hosting_deployJsApplication',
-    arguments: { domain: DOMAIN, archivePath: ARCHIVE, removeArchive: true },
-  });
+
+  // Retry up to 5 times with backoff — Hostinger API occasionally returns 500
+  let deployResult;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    if (attempt > 1) {
+      const wait = attempt * 15000;
+      console.log(`Retry ${attempt}/5 in ${wait / 1000}s...`);
+      await sleep(wait);
+    }
+    deployResult = await send('tools/call', {
+      name: 'hosting_deployJsApplication',
+      arguments: { domain: DOMAIN, archivePath: ARCHIVE, removeArchive: attempt === 1 },
+    });
+    const c = deployResult?.result?.content?.[0]?.text;
+    if (c) break;
+    console.warn(`Attempt ${attempt} failed:`, JSON.stringify(deployResult?.error ?? deployResult));
+  }
 
   const content = deployResult?.result?.content?.[0]?.text;
   if (!content) {
-    console.error('No response from deploy tool:', JSON.stringify(deployResult));
+    console.error('All deploy attempts failed:', JSON.stringify(deployResult));
     process.exit(1);
   }
 
