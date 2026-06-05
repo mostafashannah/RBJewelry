@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { format } from "date-fns";
-import { Plus, Download } from "lucide-react";
+import { Plus, Download, TrendingUp, TrendingDown, Package, ShoppingBag } from "lucide-react";
 
 interface Expense {
   id: string;
@@ -12,6 +12,16 @@ interface Expense {
   date: string;
 }
 
+interface Summary {
+  revenue: number;
+  totalExpenses: number;
+  profit: number;
+  stockValue: number;
+  stockItemCount: number;
+  paidOrderCount: number;
+  byCategory: Record<string, number>;
+}
+
 const CATEGORIES = ["Ad Spend", "Shipping", "Materials", "Operations", "Marketing", "Other"];
 
 export default function FinancesPage() {
@@ -19,6 +29,7 @@ export default function FinancesPage() {
   const [month, setMonth] = useState(currentMonth);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<Summary | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ category: CATEGORIES[0], amount: "", description: "", date: format(new Date(), "yyyy-MM-dd") });
   const [exporting, setExporting] = useState(false);
@@ -34,6 +45,10 @@ export default function FinancesPage() {
   }, [month]);
 
   useEffect(() => { loadExpenses(); }, [month, loadExpenses]);
+
+  useEffect(() => {
+    fetch("/api/finances/summary").then((r) => r.json()).then(setSummary);
+  }, []);
 
   const addExpense = async () => {
     if (!form.amount) return;
@@ -106,18 +121,69 @@ export default function FinancesPage() {
         <div className="mb-4 text-xs text-green-700 bg-green-50 rounded-lg px-4 py-2">{exportMsg}</div>
       )}
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      {/* P&L Summary — all-time from orders + expenses */}
+      {summary && (
+        <div className="mb-6 space-y-3">
+          <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">All-time P&L</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="bg-white border border-zinc-100 rounded-xl p-4">
+              <div className="flex items-center gap-1.5 mb-2">
+                <ShoppingBag size={13} className="text-emerald-500" />
+                <p className="text-xs text-zinc-400">Revenue (paid orders)</p>
+              </div>
+              <p className="text-xl font-semibold text-emerald-600">{summary.revenue.toLocaleString()} EGP</p>
+              <p className="text-[10px] text-zinc-400 mt-1">{summary.paidOrderCount} paid orders</p>
+            </div>
+            <div className="bg-white border border-zinc-100 rounded-xl p-4">
+              <div className="flex items-center gap-1.5 mb-2">
+                <TrendingDown size={13} className="text-red-400" />
+                <p className="text-xs text-zinc-400">Total Expenses</p>
+              </div>
+              <p className="text-xl font-semibold text-red-500">{summary.totalExpenses.toLocaleString()} EGP</p>
+              <p className="text-[10px] text-zinc-400 mt-1">{Object.keys(summary.byCategory).length} categories</p>
+            </div>
+            <div className="bg-white border border-zinc-100 rounded-xl p-4">
+              <div className="flex items-center gap-1.5 mb-2">
+                <TrendingUp size={13} className={summary.profit >= 0 ? "text-emerald-500" : "text-red-400"} />
+                <p className="text-xs text-zinc-400">Net Profit / Loss</p>
+              </div>
+              <p className={`text-xl font-semibold ${summary.profit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                {summary.profit >= 0 ? "+" : ""}{summary.profit.toLocaleString()} EGP
+              </p>
+            </div>
+            <div className="bg-white border border-zinc-100 rounded-xl p-4">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Package size={13} className="text-amber-500" />
+                <p className="text-xs text-zinc-400">Stock Value (cost)</p>
+              </div>
+              <p className="text-xl font-semibold text-amber-600">{summary.stockValue.toLocaleString()} EGP</p>
+              <p className="text-[10px] text-zinc-400 mt-1">{summary.stockItemCount} items in stock</p>
+            </div>
+          </div>
+          {/* Expenses by category */}
+          <div className="bg-white border border-zinc-100 rounded-xl p-4">
+            <p className="text-xs font-medium text-zinc-500 mb-3">Expenses by Category</p>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(summary.byCategory).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => (
+                <div key={cat} className="flex items-center gap-2 bg-zinc-50 rounded-lg px-3 py-1.5">
+                  <span className="text-xs text-zinc-600 font-medium">{cat}</span>
+                  <span className="text-xs text-zinc-400">{amt.toLocaleString()} EGP</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Month filter summary */}
+      <div className="grid grid-cols-2 gap-3 mb-5">
         <div className="bg-white border border-zinc-100 rounded-xl p-4">
-          <p className="text-xs text-zinc-400">Total Expenses</p>
+          <p className="text-xs text-zinc-400">Expenses ({month === "all" ? "all time" : month})</p>
           <p className="text-xl font-semibold text-zinc-900 mt-1">{totalExpenses.toLocaleString()} EGP</p>
         </div>
         <div className="bg-white border border-zinc-100 rounded-xl p-4">
-          <p className="text-xs text-zinc-400">Expense Entries</p>
+          <p className="text-xs text-zinc-400">Entries</p>
           <p className="text-xl font-semibold text-zinc-900 mt-1">{expenses.length}</p>
-        </div>
-        <div className="bg-white border border-zinc-100 rounded-xl p-4">
-          <p className="text-xs text-zinc-400">Period</p>
-          <p className="text-xl font-semibold text-zinc-900 mt-1">{month === "all" ? "All time" : month}</p>
         </div>
       </div>
 
