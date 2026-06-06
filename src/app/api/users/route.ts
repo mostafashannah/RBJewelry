@@ -1,10 +1,15 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getSessionFromRequest, hashPassword } from "@/lib/auth";
+import { verifySession, hashPassword } from "@/lib/auth";
 
 async function requireAdmin(req: NextRequest) {
-  const session = await getSessionFromRequest(req);
+  const cookie = req.cookies.get("rb_session")?.value;
+  if (!cookie) return null;
+  // Plain admin password cookie
+  if (process.env.ADMIN_PASSWORD && cookie === process.env.ADMIN_PASSWORD) return { id: "admin", role: "ADMIN" as const };
+  // JWT
+  const session = await verifySession(cookie).catch(() => null);
   if (!session || session.role !== "ADMIN") return null;
   return session;
 }

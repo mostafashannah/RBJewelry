@@ -211,10 +211,21 @@ export default function InventoryPage() {
     load(); loadSilver();
   };
 
+  const containerRef = useRef<HTMLDivElement>(null);
+
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto"
-      onTouchStart={(e) => { if (window.scrollY === 0) startYRef.current = e.touches[0].clientY; }}
-      onTouchMove={(e) => { const dy = e.touches[0].clientY - startYRef.current; if (dy > 0 && window.scrollY === 0) setPullY(Math.min(dy, 80)); }}
+    <div ref={containerRef} className="p-4 md:p-6 max-w-5xl mx-auto"
+      onTouchStart={(e) => {
+        const parent = containerRef.current?.closest("main");
+        if ((parent?.scrollTop ?? 0) === 0) startYRef.current = e.touches[0].clientY;
+      }}
+      onTouchMove={(e) => {
+        const parent = containerRef.current?.closest("main");
+        if ((parent?.scrollTop ?? 0) === 0) {
+          const dy = e.touches[0].clientY - startYRef.current;
+          if (dy > 0) setPullY(Math.min(dy, 80));
+        }
+      }}
       onTouchEnd={async () => { if (pullY > 50) { setPullY(0); await load(); } else setPullY(0); }}
     >
       {pullY > 10 && (
@@ -552,7 +563,7 @@ export default function InventoryPage() {
                       if (name.length > 2) {
                         const res = await fetch(`/api/shopify/product-price?name=${encodeURIComponent(name)}`);
                         const data = await res.json();
-                        if (data.products?.[0] && !form.priceEGP) {
+                        if (data.products?.[0]) {
                           setForm((f) => ({ ...f, priceEGP: String(data.products[0].priceMin) }));
                         }
                       }

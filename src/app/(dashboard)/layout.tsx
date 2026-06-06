@@ -109,7 +109,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="h-14 flex items-center justify-between px-5 border-b border-zinc-100">
+        <div className="flex items-center justify-between px-5 border-b border-zinc-100"
+          style={{ paddingTop: "calc(env(safe-area-inset-top) + 14px)", paddingBottom: "14px" }}>
           <span className="text-sm font-semibold tracking-widest uppercase" style={{ color: "#c9a96e" }}>
             RB Jewelry
           </span>
@@ -155,7 +156,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Mobile bottom nav — sits above iPhone home indicator */}
         {bottomNav.length > 0 && (
           <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-zinc-100 flex z-30"
-            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+            style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 5px)" }}>
             {bottomNav.map(({ href, label, icon: Icon }) => {
               const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
               return (

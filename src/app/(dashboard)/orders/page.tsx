@@ -58,8 +58,8 @@ export default function OrdersPage() {
 
   return (
     <div className="p-4 md:p-8"
-      onTouchStart={(e) => { if (window.scrollY === 0) startYRef.current = e.touches[0].clientY; }}
-      onTouchMove={(e) => { const dy = e.touches[0].clientY - startYRef.current; if (dy > 0 && window.scrollY === 0) setPullY(Math.min(dy, 80)); }}
+      onTouchStart={(e) => { if ((e.currentTarget.closest("main") as HTMLElement|null)?.scrollTop === 0) startYRef.current = e.touches[0].clientY; }}
+      onTouchMove={(e) => { const dy = e.touches[0].clientY - startYRef.current; if (dy > 0 && ((e.currentTarget.closest("main") as HTMLElement|null)?.scrollTop ?? 0) === 0) setPullY(Math.min(dy, 80)); }}
       onTouchEnd={async () => { if (pullY > 50) { setPullY(0); await sync(); } else setPullY(0); }}
     >
       {pullY > 10 && (
