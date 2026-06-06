@@ -69,6 +69,27 @@ export default function LoginPage() {
             {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>
+
+        <div className="mt-4 pt-4 border-t border-zinc-100">
+          <button
+            onClick={async () => {
+              setLoading(true);
+              const res = await fetch("/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ password: "demo" }),
+              });
+              const data = await res.json();
+              if (res.ok) router.push("/inventory");
+              else { setError(data.error ?? "Demo unavailable"); setLoading(false); }
+            }}
+            disabled={loading}
+            className="w-full border border-zinc-200 text-zinc-500 rounded-xl py-2.5 text-sm hover:bg-zinc-50 disabled:opacity-40 transition-colors"
+          >
+            👁 View as Demo
+          </button>
+          <p className="text-center text-[10px] text-zinc-400 mt-2">Read-only · Inventory & Finances only · 2h session</p>
+        </div>
       </div>
     </div>
   );

@@ -29,6 +29,14 @@ export async function POST(req: NextRequest) {
     return res;
   }
 
+  // Demo access — no real data modification allowed
+  if (password === "demo") {
+    const token = await signSession({ id: "demo", role: "LIMITED" });
+    const res = NextResponse.json({ ok: true, role: "LIMITED" });
+    res.cookies.set("rb_session", token, { ...COOKIE_OPTS, maxAge: 60 * 60 * 2 }); // 2h only
+    return res;
+  }
+
   // Admin login — password-only (ADMIN_PASSWORD env var)
   if (!process.env.ADMIN_PASSWORD || password !== process.env.ADMIN_PASSWORD) {
     return NextResponse.json({ error: "Invalid password" }, { status: 401 });
