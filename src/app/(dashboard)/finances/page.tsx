@@ -60,7 +60,10 @@ export default function FinancesPage() {
   }, []);
 
   const reloadSummary = () => {
-    fetch("/api/finances/summary").then((r) => r.json()).then(setSummary).catch(() => null);
+    fetch("/api/finances/summary")
+      .then((r) => r.json())
+      .then((data) => { if (data && typeof data.revenue === "number") setSummary(data); })
+      .catch(() => null);
   };
 
   useEffect(() => { loadExpenses(); }, [loadExpenses]);

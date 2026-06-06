@@ -8,7 +8,7 @@ export async function GET() {
       db.expense.findMany(),
       db.shopifyOrderCache.findMany(),
       db.inventoryItem.findMany({ where: { status: "IN_STOCK" } }),
-      db.shareholderInvestment.findMany(),
+      db.shareholderInvestment.findMany().catch(() => []),
     ]);
 
     // Revenue: paid orders only (exclude voided)

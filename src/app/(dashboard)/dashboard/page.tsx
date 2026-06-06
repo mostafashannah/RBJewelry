@@ -24,7 +24,9 @@ export default function DashboardPage() {
   useEffect(() => {
     fetch("/api/finances/summary")
       .then((r) => r.json())
-      .then(setSummary)
+      .then((data) => {
+        if (data && typeof data.revenue === "number") setSummary(data);
+      })
       .catch(() => null);
   }, []);
 

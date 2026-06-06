@@ -5,7 +5,7 @@ import { z } from "zod";
 
 export async function GET() {
   try {
-    const investments = await db.shareholderInvestment.findMany({ orderBy: { date: "desc" } });
+    const investments = await db.shareholderInvestment.findMany({ orderBy: { date: "desc" } }).catch(() => []);
     return NextResponse.json({ investments });
   } catch (err) {
     return NextResponse.json({ error: String(err), investments: [] }, { status: 500 });
