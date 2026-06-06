@@ -40,8 +40,7 @@ export async function POST(req: NextRequest) {
   if (!process.env.ADMIN_PASSWORD || password !== process.env.ADMIN_PASSWORD) {
     return NextResponse.json({ error: "Invalid password" }, { status: 401 });
   }
-  const token = await signSession({ id: "admin", role: "ADMIN" });
   const res = NextResponse.json({ ok: true, role: "ADMIN" });
-  res.cookies.set("rb_session", token, COOKIE_OPTS);
+  res.cookies.set("rb_session", process.env.ADMIN_PASSWORD, COOKIE_OPTS);
   return res;
 }

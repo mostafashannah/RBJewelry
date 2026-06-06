@@ -13,9 +13,13 @@ const PUBLIC_PATHS = [
 const LIMITED_ALLOWED = [
   "/inventory",
   "/finances",
+  "/orders",
+  "/products",
   "/dashboard",
   "/api/inventory",
   "/api/finances",
+  "/api/shopify/orders",
+  "/api/shopify/products",
   "/api/auth",
   "/api/push",
   "/_next",
@@ -44,7 +48,13 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Demo access — direct cookie value, no JWT
+  // Admin — cookie equals ADMIN_PASSWORD
+  const adminPwd = process.env.ADMIN_PASSWORD;
+  if (adminPwd && sessionCookie === adminPwd) {
+    return NextResponse.next();
+  }
+
+  // Demo — direct cookie value, LIMITED access
   if (sessionCookie === "demo-access") {
     const allowed = LIMITED_ALLOWED.some((p) => pathname.startsWith(p));
     if (!allowed) {
@@ -55,15 +65,14 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Admin / staff — verify JWT
-  const session = await verifySession(sessionCookie);
+  // JWT session (staff users)
+  const session = await verifySession(sessionCookie).catch(() => null);
   if (!session) {
     const loginUrl = req.nextUrl.clone();
     loginUrl.pathname = "/login";
     return NextResponse.redirect(loginUrl);
   }
 
-  // Restrict LIMITED users to their allowed sections
   if (session.role === "LIMITED") {
     const allowed = LIMITED_ALLOWED.some((p) => pathname.startsWith(p));
     if (!allowed) {
