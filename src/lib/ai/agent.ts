@@ -57,18 +57,9 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-function describeOrderPhase(fulfillmentStatus: string | null, shipmentStatus: string | null): string {
+function describeOrderPhase(fulfillmentStatus: string | null): string {
   const fs = (fulfillmentStatus ?? "").toUpperCase();
-  const ss = (shipmentStatus ?? "").toUpperCase();
-
-  if (fs === "UNFULFILLED" || !fs) {
-    return "Still being crafted — your piece is handmade especially for you (5–7 business days)";
-  }
-  if (ss === "OUT_FOR_DELIVERY") return "Out for delivery today — should arrive very soon!";
-  if (ss === "DELIVERED") return "Delivered! We hope you love it ❤";
-  if (ss === "ATTEMPTED_DELIVERY") return "Courier attempted delivery but couldn't reach you — please contact them to reschedule";
-  if (ss === "IN_TRANSIT" || ss === "CONFIRMED" || ss === "PICKED_UP") return "Picked up by the courier and on its way to you";
-  if (ss === "LABEL_PRINTED" || ss === "LABEL_PURCHASED") return "Packed and ready — waiting for courier pickup";
+  if (fs === "UNFULFILLED" || !fs) return "Still being crafted — your piece is handmade especially for you (5–7 business days)";
   if (fs === "PARTIAL") return "Partially shipped — part of your order is on its way";
   if (fs === "FULFILLED") return "Shipped and on its way to you";
   return "Being processed";
@@ -174,7 +165,7 @@ async function preflightOrderLookup(
 
     return orders.map((o) => {
       const items = o.items.map((i) => `${i.quantity}x ${i.title}`).join(", ");
-      const phase = describeOrderPhase(o.fulfillmentStatus, o.shipmentStatus);
+      const phase = describeOrderPhase(o.fulfillmentStatus);
       const tracking = o.trackingNumber ? ` Tracking: ${o.trackingNumber}` : "";
       return `Order ${o.orderNumber} (${items}): ${phase}.${tracking}`;
     }).join("\n");
@@ -473,7 +464,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
                   } else {
                     const summary = orders.map((o) => {
                       const items = o.items.map((i) => `${i.quantity}x ${i.title}`).join(", ");
-                      const phase = describeOrderPhase(o.fulfillmentStatus, o.shipmentStatus);
+                      const phase = describeOrderPhase(o.fulfillmentStatus);
                       const tracking = o.trackingNumber ? ` Tracking: ${o.trackingNumber}` : "";
                       return `Order ${o.orderNumber} (${items}): ${phase}.${tracking}`;
                     }).join("\n");
@@ -482,7 +473,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
                 } else {
                   const summary = orders.map((o) => {
                     const items = o.items.map((i) => `${i.quantity}x ${i.title}`).join(", ");
-                    const phase = describeOrderPhase(o.fulfillmentStatus, o.shipmentStatus);
+                    const phase = describeOrderPhase(o.fulfillmentStatus);
                     const tracking = o.trackingNumber ? ` Tracking: ${o.trackingNumber}` : "";
                     return `Order ${o.orderNumber} (${items}): ${phase}.${tracking}`;
                   }).join("\n");

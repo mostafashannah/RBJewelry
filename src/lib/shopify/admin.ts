@@ -203,7 +203,6 @@ const ORDER_LOOKUP_QUERY = `
           }
           fulfillments(first: 5) {
             status
-            shipmentStatus
             updatedAt
             trackingInfo { number url }
           }
@@ -220,7 +219,6 @@ export interface OrderLookupResult {
   fulfillmentStatus: string | null;
   financialStatus: string;
   items: { title: string; quantity: number }[];
-  shipmentStatus: string | null;
   trackingNumber: string | null;
   trackingUrl: string | null;
 }
@@ -236,7 +234,7 @@ export async function lookupOrders(searchQuery: string): Promise<OrderLookupResu
       name: string; phone: string | null; createdAt: string;
       fulfillmentStatus: string | null; financialStatus: string;
       lineItems: { edges: { node: { title: string; quantity: number } }[] };
-      fulfillments: { status: string; shipmentStatus: string | null; updatedAt: string; trackingInfo: { number: string; url: string }[] }[];
+      fulfillments: { status: string; updatedAt: string; trackingInfo: { number: string; url: string }[] }[];
     } }[] };
   }>(ORDER_LOOKUP_QUERY, { query: searchQuery });
 
@@ -250,7 +248,7 @@ export async function lookupOrders(searchQuery: string): Promise<OrderLookupResu
       fulfillmentStatus: node.fulfillmentStatus ?? null,
       financialStatus: node.financialStatus,
       items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity })),
-      shipmentStatus: lastFulfillment?.shipmentStatus ?? null,
+      
       trackingNumber: tracking?.number ?? null,
       trackingUrl: tracking?.url ?? null,
     };
@@ -288,7 +286,7 @@ async function lookupOrdersFromCache(searchQuery: string): Promise<OrderLookupRe
       fulfillmentStatus: r.fulfillmentStatus ?? null,
       financialStatus: r.status,
       items: items.map((i) => ({ title: i.title, quantity: i.quantity })),
-      shipmentStatus: r.shipmentStatus ?? null,
+      
       trackingNumber: r.trackingNumber ?? null,
       trackingUrl: r.trackingUrl ?? null,
     };
@@ -303,7 +301,7 @@ export async function syncOrdersToCache() {
       totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
       shippingAddress: { firstName: string; lastName: string; phone: string } | null;
       lineItems: { edges: { node: { title: string; quantity: number } }[] };
-      fulfillments: { status: string; shipmentStatus: string | null; trackingInfo: { number: string; url: string }[] }[];
+      fulfillments: { status: string; trackingInfo: { number: string; url: string }[] }[];
     } }[] };
   }>(`
     query {
@@ -317,7 +315,7 @@ export async function syncOrdersToCache() {
             shippingAddress { firstName lastName phone }
             lineItems(first: 20) { edges { node { title quantity } } }
             fulfillments(first: 5) {
-              status shipmentStatus
+              status
               trackingInfo { number url }
             }
           }
@@ -340,7 +338,7 @@ export async function syncOrdersToCache() {
       update: {
         status,
         fulfillmentStatus: fulfillment,
-        shipmentStatus: lastFulfillment?.shipmentStatus ?? null,
+        
         trackingNumber: tracking?.number ?? null,
         trackingUrl: tracking?.url ?? null,
         lineItemsJson: { customerName, items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity })) },
@@ -355,7 +353,7 @@ export async function syncOrdersToCache() {
         currency: node.totalPriceSet.shopMoney.currencyCode,
         status,
         fulfillmentStatus: fulfillment,
-        shipmentStatus: lastFulfillment?.shipmentStatus ?? null,
+        
         trackingNumber: tracking?.number ?? null,
         trackingUrl: tracking?.url ?? null,
         lineItemsJson: { customerName, items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity })) },
