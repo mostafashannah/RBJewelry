@@ -7,8 +7,32 @@ import {
 } from "lucide-react";
 
 const CATEGORIES = ["Ring", "Necklace", "Bracelet", "Earrings", "Anklet", "Set", "Other"];
-const MATERIALS = ["Sterling Silver", "Gold-Plated Silver", "Rose Gold-Plated", "18K Gold", "Other"];
-const COLORS_LIST = ["Silver", "Gold", "Rose Gold", "Black", "White", "Blue", "Red", "Green", "Purple", "Mixed"];
+const MATERIALS = ["Silver 925", "Gold 18k Plated", "Other"];
+const COLORS_LIST = ["Silver", "Gold", "Rose Gold", "Black", "White", "Blue", "Red", "Green", "Pink", "Purple", "Mixed"];
+
+// SKU system
+const CAT_PREFIX: Record<string, string> = {
+  Ring: "R", Earrings: "E", Necklace: "N", Bracelet: "B", Set: "S", Anklet: "A", Other: "O",
+};
+const COLOR_CODES = [
+  { code: "SL", label: "Silver", display: "Silver" },
+  { code: "GD", label: "Gold", display: "Gold" },
+  { code: "G",  label: "Green", display: "Green" },
+  { code: "R",  label: "Red",   display: "Red" },
+  { code: "B",  label: "Blue",  display: "Blue" },
+  { code: "P",  label: "Pink",  display: "Pink" },
+  { code: "C",  label: "Clear", display: "White" },
+  { code: "RG", label: "Rose Gold", display: "Rose Gold" },
+  { code: "BK", label: "Black", display: "Black" },
+];
+const RING_SIZES = ["5", "6", "7", "8", "9", "10", "OS"];
+const SIZE_CATS = ["Ring", "Bracelet", "Anklet"];
+
+type AddMode = "existing" | "new-color" | "new";
+type SkuMeta = {
+  byCategory: Record<string, Array<{ id: string; name: string; sku: string | null; priceEGP: number | null }>>;
+  nextNumbers: Record<string, number>;
+};
 const STATUSES = ["IN_STOCK", "SOLD", "RESERVED", "DAMAGED"] as const;
 const STATUS_LABELS: Record<string, string> = { IN_STOCK: "In Stock", SOLD: "Sold", RESERVED: "Reserved", DAMAGED: "Damaged" };
 const STATUS_COLORS: Record<string, string> = {
@@ -70,6 +94,19 @@ export default function InventoryPage() {
   const suggTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+
+  // Smart add mode
+  const [addMode, setAddMode] = useState<AddMode>("existing");
+  const [skuMeta, setSkuMeta] = useState<SkuMeta | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<SkuMeta["byCategory"][string][0] | null>(null);
+  const [selectedColorCode, setSelectedColorCode] = useState("");
+  const [selectedSize, setSelectedSize] = useState("");
+
+  const fetchSkuMeta = useCallback(async () => {
+    const res = await fetch("/api/inventory/sku-meta");
+    const data = await res.json();
+    setSkuMeta(data);
+  }, []);
 
   const load = useCallback(async (q?: string) => {
     setLoading(true);
@@ -177,7 +214,10 @@ export default function InventoryPage() {
 
   const openAdd = () => {
     setEditItem(null); setForm({ ...emptyForm }); setPhotoUrl(null); setAiHints([]);
-    setShopifySuggestions([]); setShowSuggestions(false); setShowAdd(true);
+    setShopifySuggestions([]); setShowSuggestions(false);
+    setAddMode("existing"); setSelectedProduct(null); setSelectedColorCode(""); setSelectedSize("");
+    fetchSkuMeta();
+    setShowAdd(true);
   };
 
   const openEdit = (item: Item) => {
@@ -192,6 +232,43 @@ export default function InventoryPage() {
     });
     setPhotoUrl(item.photoUrl); setAiHints([]); setShopifySuggestions([]); setShowSuggestions(false); setShowAdd(true);
   };
+
+  // Auto-generate SKU when smart-add fields change
+  useEffect(() => {
+    if (editItem) return;
+    if (addMode === "existing" && selectedProduct) {
+      setForm((f) => ({
+        ...f,
+        name: selectedProduct.name,
+        sku: selectedProduct.sku ?? "",
+        priceEGP: selectedProduct.priceEGP != null ? String(selectedProduct.priceEGP) : f.priceEGP,
+      }));
+      return;
+    }
+    if (addMode === "new-color" && selectedProduct) {
+      const baseNum = (selectedProduct.sku ?? "").split("-")[0]; // e.g. "R00001"
+      let sku = baseNum;
+      if (selectedColorCode) sku += `-${selectedColorCode}`;
+      if (selectedSize) sku += `-${selectedSize}`;
+      const colorLabel = COLOR_CODES.find((c) => c.code === selectedColorCode)?.display ?? "";
+      setForm((f) => ({
+        ...f,
+        name: selectedProduct.name + (colorLabel ? ` (${colorLabel})` : ""),
+        sku,
+        size: selectedSize,
+      }));
+      return;
+    }
+    if (addMode === "new") {
+      const prefix = CAT_PREFIX[form.category] ?? "O";
+      const num = skuMeta?.nextNumbers[prefix] ?? 1;
+      let sku = `${prefix}${String(num).padStart(5, "0")}`;
+      if (selectedColorCode) sku += `-${selectedColorCode}`;
+      if (selectedSize) sku += `-${selectedSize}`;
+      setForm((f) => ({ ...f, sku, size: selectedSize }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addMode, selectedProduct, selectedColorCode, selectedSize, form.category, skuMeta, editItem]);
 
   const save = async () => {
     if (!form.name || !form.weightG) return;
@@ -577,73 +654,204 @@ export default function InventoryPage() {
                 )}
               </div>
 
-              {/* Name + SKU */}
-              <div className="space-y-3">
-                {/* Name with Shopify picker */}
-                <div className="relative">
-                  <label className="text-xs font-medium text-zinc-600 block mb-1">Item Name *</label>
-                  <input type="text" value={form.name}
-                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                    onChange={(e) => { setForm((f) => ({ ...f, name: e.target.value })); lookupShopify(e.target.value, "name"); }}
-                    placeholder="Type name to search Shopify products…"
-                    className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
-                  {showSuggestions && shopifySuggestions.length > 0 && (
-                    <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg overflow-hidden">
-                      {shopifySuggestions.map((p) => (
-                        <div key={p.id} className="flex items-center gap-2 px-3 py-2 hover:bg-zinc-50 border-b border-zinc-50 last:border-0">
-                          {p.imageUrl ? (
-                            <img src={p.imageUrl} alt={p.title} className="w-8 h-8 rounded-lg object-cover shrink-0" />
-                          ) : (
-                            <div className="w-8 h-8 rounded-lg bg-zinc-100 shrink-0" />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-zinc-900 truncate">{p.title}</p>
-                            <p className="text-[10px] text-emerald-600">{p.priceMin.toLocaleString()} EGP</p>
-                          </div>
-                          <div className="flex gap-1 shrink-0">
-                            <button type="button" onMouseDown={() => applyShopifyMatch(p, false)}
-                              className="text-[10px] px-2 py-1 bg-zinc-100 rounded-lg text-zinc-600 hover:bg-zinc-200">
-                              Price only
-                            </button>
-                            <button type="button" onMouseDown={() => applyShopifyMatch(p, true)}
-                              className="text-[10px] px-2 py-1 bg-zinc-900 text-white rounded-lg hover:bg-zinc-700">
-                              Apply + rename
-                            </button>
-                          </div>
-                        </div>
+              {/* ── SMART ADD (new items only) ── */}
+              {!editItem && (
+                <div className="space-y-3">
+                  {/* Mode selector */}
+                  <div>
+                    <p className="text-xs font-medium text-zinc-600 mb-2">What are you adding?</p>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {([
+                        { key: "existing", label: "Existing product" },
+                        { key: "new-color", label: "New color variant" },
+                        { key: "new", label: "Brand new item" },
+                      ] as { key: AddMode; label: string }[]).map(({ key, label }) => (
+                        <button key={key} type="button"
+                          onClick={() => { setAddMode(key); setSelectedProduct(null); setSelectedColorCode(""); setSelectedSize(""); }}
+                          className={`text-[11px] px-2 py-2 rounded-xl border transition-colors text-center leading-tight ${addMode === key ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500 hover:border-zinc-400"}`}>
+                          {label}
+                        </button>
                       ))}
                     </div>
-                  )}
-                </div>
-                {/* SKU */}
-                <div>
-                  <label className="text-xs font-medium text-zinc-600 block mb-1">
-                    <Hash size={10} className="inline mr-0.5" />SKU / Code
-                  </label>
-                  <input type="text" value={form.sku}
-                    onChange={(e) => { setForm({ ...form, sku: e.target.value }); lookupShopify(e.target.value, "sku"); }}
-                    placeholder="e.g. R00012-7 — searches Shopify by SKU"
-                    className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-400 font-mono" />
-                </div>
-              </div>
+                  </div>
 
-              {/* Category + Material */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-zinc-600 block mb-1">Category *</label>
-                  <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
-                    className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400">
-                    {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-                  </select>
+                  {/* Category */}
+                  <div>
+                    <label className="text-xs font-medium text-zinc-600 block mb-1">Category</label>
+                    <select value={form.category}
+                      onChange={(e) => { setForm((f) => ({ ...f, category: e.target.value })); setSelectedProduct(null); }}
+                      className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400">
+                      {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                    </select>
+                  </div>
+
+                  {/* Existing product picker */}
+                  {addMode === "existing" && (
+                    <div>
+                      <label className="text-xs font-medium text-zinc-600 block mb-1">Product</label>
+                      <select
+                        value={selectedProduct?.id ?? ""}
+                        onChange={(e) => {
+                          const list = skuMeta?.byCategory[form.category] ?? [];
+                          setSelectedProduct(list.find((p) => p.id === e.target.value) ?? null);
+                        }}
+                        className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400">
+                        <option value="">— select product —</option>
+                        {(skuMeta?.byCategory[form.category] ?? []).map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}{p.priceEGP ? ` — ${p.priceEGP.toLocaleString()} EGP` : ""}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* New-color: base product picker */}
+                  {addMode === "new-color" && (
+                    <div>
+                      <label className="text-xs font-medium text-zinc-600 block mb-1">Base product</label>
+                      <select
+                        value={selectedProduct?.id ?? ""}
+                        onChange={(e) => {
+                          const list = skuMeta?.byCategory[form.category] ?? [];
+                          setSelectedProduct(list.find((p) => p.id === e.target.value) ?? null);
+                        }}
+                        className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400">
+                        <option value="">— select base product —</option>
+                        {(skuMeta?.byCategory[form.category] ?? []).map((p) => (
+                          <option key={p.id} value={p.id}>{p.name} — {p.sku ?? "no SKU"}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Color picker (new-color + new) */}
+                  {(addMode === "new-color" || addMode === "new") && (
+                    <div>
+                      <label className="text-xs font-medium text-zinc-600 block mb-2">Color</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button type="button"
+                          onClick={() => setSelectedColorCode("")}
+                          className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${selectedColorCode === "" ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-400 hover:border-zinc-400"}`}>
+                          None
+                        </button>
+                        {COLOR_CODES.map(({ code, label }) => (
+                          <button key={code} type="button"
+                            onClick={() => setSelectedColorCode(code)}
+                            className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${selectedColorCode === code ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500 hover:border-zinc-400"}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Size dropdown (ring / bracelet / anklet) */}
+                  {SIZE_CATS.includes(form.category) && (
+                    <div>
+                      <label className="text-xs font-medium text-zinc-600 block mb-1">Size</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button type="button"
+                          onClick={() => setSelectedSize("")}
+                          className={`text-xs px-3 py-1.5 rounded-xl border transition-colors ${selectedSize === "" ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-400 hover:border-zinc-400"}`}>
+                          No size
+                        </button>
+                        {RING_SIZES.map((s) => (
+                          <button key={s} type="button"
+                            onClick={() => setSelectedSize(s)}
+                            className={`text-xs px-3 py-1.5 rounded-xl border transition-colors ${selectedSize === s ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500 hover:border-zinc-400"}`}>
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* New product: name field */}
+                  {addMode === "new" && (
+                    <div>
+                      <label className="text-xs font-medium text-zinc-600 block mb-1">Item Name *</label>
+                      <input type="text" value={form.name}
+                        onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                        placeholder="e.g. Wave Ring"
+                        className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
+                    </div>
+                  )}
+
+                  {/* Generated SKU preview */}
+                  {form.sku && (
+                    <div className="flex items-center gap-2 bg-zinc-50 rounded-xl px-3 py-2">
+                      <Hash size={11} className="text-zinc-400 shrink-0" />
+                      <span className="text-xs font-mono text-zinc-700 flex-1">{form.sku}</span>
+                      <input type="text" value={form.sku}
+                        onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
+                        className="text-xs font-mono text-zinc-700 bg-transparent border-0 outline-none w-28 text-right"
+                        placeholder="edit SKU" />
+                    </div>
+                  )}
+
+                  {/* Material */}
+                  <div>
+                    <label className="text-xs font-medium text-zinc-600 block mb-1">Material</label>
+                    <select value={form.material} onChange={(e) => setForm((f) => ({ ...f, material: e.target.value }))}
+                      className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400">
+                      {MATERIALS.map((m) => <option key={m}>{m}</option>)}
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-xs font-medium text-zinc-600 block mb-1">Material</label>
-                  <select value={form.material} onChange={(e) => setForm({ ...form, material: e.target.value })}
-                    className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400">
-                    {MATERIALS.map((m) => <option key={m}>{m}</option>)}
-                  </select>
+              )}
+
+              {/* ── EDIT MODE fields ── */}
+              {editItem && (
+                <div className="space-y-3">
+                  <div className="relative">
+                    <label className="text-xs font-medium text-zinc-600 block mb-1">Item Name *</label>
+                    <input type="text" value={form.name}
+                      onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                      onChange={(e) => { setForm((f) => ({ ...f, name: e.target.value })); lookupShopify(e.target.value, "name"); }}
+                      placeholder="Item name"
+                      className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
+                    {showSuggestions && shopifySuggestions.length > 0 && (
+                      <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg overflow-hidden">
+                        {shopifySuggestions.map((p) => (
+                          <div key={p.id} className="flex items-center gap-2 px-3 py-2 hover:bg-zinc-50 border-b border-zinc-50 last:border-0">
+                            {p.imageUrl ? <img src={p.imageUrl} alt={p.title} className="w-8 h-8 rounded-lg object-cover shrink-0" /> : <div className="w-8 h-8 rounded-lg bg-zinc-100 shrink-0" />}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-zinc-900 truncate">{p.title}</p>
+                              <p className="text-[10px] text-emerald-600">{p.priceMin.toLocaleString()} EGP</p>
+                            </div>
+                            <div className="flex gap-1 shrink-0">
+                              <button type="button" onMouseDown={() => applyShopifyMatch(p, false)} className="text-[10px] px-2 py-1 bg-zinc-100 rounded-lg text-zinc-600 hover:bg-zinc-200">Price only</button>
+                              <button type="button" onMouseDown={() => applyShopifyMatch(p, true)} className="text-[10px] px-2 py-1 bg-zinc-900 text-white rounded-lg hover:bg-zinc-700">Apply + rename</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-zinc-600 block mb-1"><Hash size={10} className="inline mr-0.5" />SKU / Code</label>
+                    <input type="text" value={form.sku}
+                      onChange={(e) => { setForm({ ...form, sku: e.target.value }); lookupShopify(e.target.value, "sku"); }}
+                      placeholder="e.g. R00012-G-7"
+                      className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-400 font-mono" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-zinc-600 block mb-1">Category *</label>
+                      <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
+                        className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400">
+                        {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-zinc-600 block mb-1">Material</label>
+                      <select value={form.material} onChange={(e) => setForm({ ...form, material: e.target.value })}
+                        className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400">
+                        {MATERIALS.map((m) => <option key={m}>{m}</option>)}
+                      </select>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Colors */}
               <div>
@@ -662,20 +870,22 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              {/* Weight + Qty */}
-              <div className="grid grid-cols-3 gap-3">
+              {/* Weight + Qty (size already in smart section for add mode) */}
+              <div className={`grid gap-3 ${editItem ? "grid-cols-3" : "grid-cols-2"}`}>
                 <div>
                   <label className="text-xs font-medium text-zinc-600 block mb-1">Weight (g) *</label>
                   <input type="number" step="0.1" min="0" value={form.weightG}
                     onChange={(e) => setForm({ ...form, weightG: e.target.value })} placeholder="e.g. 4.5"
                     className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
                 </div>
-                <div>
-                  <label className="text-xs font-medium text-zinc-600 block mb-1">Size</label>
-                  <input value={form.size} onChange={(e) => setForm({ ...form, size: e.target.value })}
-                    placeholder="e.g. 7, M, 16mm"
-                    className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
-                </div>
+                {editItem && (
+                  <div>
+                    <label className="text-xs font-medium text-zinc-600 block mb-1">Size</label>
+                    <input value={form.size} onChange={(e) => setForm({ ...form, size: e.target.value })}
+                      placeholder="e.g. 7, M, 16mm"
+                      className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
+                  </div>
+                )}
                 <div>
                   <label className="text-xs font-medium text-zinc-600 block mb-1">Quantity</label>
                   <input type="number" min="1" value={form.quantity}
