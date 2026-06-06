@@ -29,11 +29,10 @@ export async function POST(req: NextRequest) {
     return res;
   }
 
-  // Demo access — no real data modification allowed
+  // Demo access — read-only, 2h session
   if (password === "demo") {
-    const token = await signSession({ id: "demo", role: "LIMITED" });
     const res = NextResponse.json({ ok: true, role: "LIMITED" });
-    res.cookies.set("rb_session", token, { ...COOKIE_OPTS, maxAge: 60 * 60 * 2 }); // 2h only
+    res.cookies.set("rb_session", "demo-access", { ...COOKIE_OPTS, maxAge: 60 * 60 * 2 });
     return res;
   }
 

@@ -74,14 +74,23 @@ export default function LoginPage() {
           <button
             onClick={async () => {
               setLoading(true);
-              const res = await fetch("/api/auth/login", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ password: "demo" }),
-              });
-              const data = await res.json();
-              if (res.ok) router.push("/inventory");
-              else { setError(data.error ?? "Demo unavailable"); setLoading(false); }
+              try {
+                const res = await fetch("/api/auth/login", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ password: "demo" }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                  router.push("/inventory");
+                } else {
+                  setError(data.error ?? "Demo unavailable");
+                  setLoading(false);
+                }
+              } catch {
+                setError("Network error — try again");
+                setLoading(false);
+              }
             }}
             disabled={loading}
             className="w-full border border-zinc-200 text-zinc-500 rounded-xl py-2.5 text-sm hover:bg-zinc-50 disabled:opacity-40 transition-colors"

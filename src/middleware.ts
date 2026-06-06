@@ -37,8 +37,26 @@ export async function middleware(req: NextRequest) {
   }
 
   const sessionCookie = req.cookies.get("rb_session")?.value;
-  const session = sessionCookie ? await verifySession(sessionCookie) : null;
 
+  if (!sessionCookie) {
+    const loginUrl = req.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // Demo access — direct cookie value, no JWT
+  if (sessionCookie === "demo-access") {
+    const allowed = LIMITED_ALLOWED.some((p) => pathname.startsWith(p));
+    if (!allowed) {
+      const inventoryUrl = req.nextUrl.clone();
+      inventoryUrl.pathname = "/inventory";
+      return NextResponse.redirect(inventoryUrl);
+    }
+    return NextResponse.next();
+  }
+
+  // Admin / staff — verify JWT
+  const session = await verifySession(sessionCookie);
   if (!session) {
     const loginUrl = req.nextUrl.clone();
     loginUrl.pathname = "/login";
