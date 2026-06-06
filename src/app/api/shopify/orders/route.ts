@@ -1,13 +1,14 @@
 export const dynamic = "force-dynamic";
-import { NextRequest, NextResponse } from "next/server";
-import { getOrders } from "@/lib/shopify/admin";
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
 
-export async function GET(req: NextRequest) {
-  const status = req.nextUrl.searchParams.get("status") ?? "any";
+export async function GET() {
   try {
-    const { orders } = await getOrders(50, status);
+    const orders = await db.shopifyOrderCache.findMany({
+      orderBy: { createdAt: "desc" },
+    });
     return NextResponse.json({ orders });
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json({ error: String(err), orders: [] }, { status: 500 });
   }
 }

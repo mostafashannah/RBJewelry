@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Package } from "lucide-react";
 
 interface Order {
   id: string;
@@ -11,13 +11,13 @@ interface Order {
   currency: string;
   customerEmail: string | null;
   customerPhone: string | null;
-  fulfillmentStatus: string | null;
-  shipmentStatus: string | null;
+  trackingNumber: string | null;
+  trackingUrl: string | null;
   createdAt: string;
-  lineItemsJson: { customerName?: string; count?: number };
+  lineItemsJson: { customerName?: string; items?: { title: string; quantity: number }[] };
 }
 
-const statusColor: Record<string, string> = {
+const paymentColor: Record<string, string> = {
   PAID: "bg-green-50 text-green-700",
   PENDING: "bg-yellow-50 text-yellow-700",
   PARTIALLY_REFUNDED: "bg-orange-50 text-orange-700",
@@ -46,34 +46,48 @@ export default function OrdersPage() {
     setSyncMsg("");
     const res = await fetch("/api/shopify/sync", { method: "POST" });
     const data = await res.json();
-    if (data.ok) {
-      setSyncMsg("Orders synced from Shopify");
-      await load();
-    } else {
-      setSyncMsg(data.error ?? "Sync failed");
-    }
+    setSyncMsg(data.ok ? "Synced from Shopify" : (data.error ?? "Sync failed"));
+    if (data.ok) await load();
     setSyncing(false);
   };
 
+  const paid = orders.filter(o => o.status.includes("PAID"));
+  const revenue = paid.reduce((s, o) => s + o.totalPrice, 0);
+
   return (
     <div className="p-4 md:p-8">
-      <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
+      {/* Header */}
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-zinc-900">Orders</h1>
-          <p className="text-sm text-zinc-500 mt-0.5">{orders.length} orders</p>
+          <p className="text-sm text-zinc-500 mt-0.5">
+            {orders.length} orders · {paid.length} paid · {revenue.toLocaleString()} EGP revenue
+          </p>
         </div>
-        <button
-          onClick={sync}
-          disabled={syncing}
-          className="flex items-center gap-1.5 text-xs px-3 py-2 border border-zinc-200 rounded-xl hover:bg-zinc-50 text-zinc-600 disabled:opacity-40 transition-colors"
-        >
-          <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
-          {syncing ? "Syncing…" : "Sync from Shopify"}
-        </button>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={sync} disabled={syncing}
+            className="flex items-center gap-1.5 text-xs px-3 py-2 border border-zinc-200 rounded-xl hover:bg-zinc-50 text-zinc-600 disabled:opacity-40 transition-colors">
+            <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "Syncing…" : "Sync Orders"}
+          </button>
+          <button onClick={async () => {
+            setSyncing(true); setSyncMsg("");
+            const res = await fetch("/api/shopify/sync", { method: "POST" });
+            const d = await res.json();
+            setSyncMsg(d.ok ? "Products synced" : (d.error ?? "Failed"));
+            setSyncing(false);
+          }} disabled={syncing}
+            className="flex items-center gap-1.5 text-xs px-3 py-2 border border-zinc-200 rounded-xl hover:bg-zinc-50 text-zinc-600 disabled:opacity-40 transition-colors">
+            <Package size={13} />
+            Sync Products
+          </button>
+        </div>
       </div>
 
       {syncMsg && (
-        <p className="text-xs text-green-600 bg-green-50 rounded-lg px-4 py-2 mb-4">{syncMsg}</p>
+        <p className={`text-xs rounded-lg px-4 py-2 mb-4 ${syncMsg.includes("fail") || syncMsg.includes("Error") ? "bg-red-50 text-red-600" : "bg-green-50 text-green-700"}`}>
+          {syncMsg}
+        </p>
       )}
 
       {loading ? (
@@ -81,7 +95,7 @@ export default function OrdersPage() {
           <RefreshCw size={16} className="text-zinc-300 animate-spin" />
         </div>
       ) : orders.length === 0 ? (
-        <p className="text-sm text-zinc-400 text-center py-20">No orders. Tap Sync from Shopify to load.</p>
+        <p className="text-sm text-zinc-400 text-center py-20">No orders in cache. Tap Sync Orders to load.</p>
       ) : (
         <>
           {/* Mobile cards */}
@@ -90,20 +104,28 @@ export default function OrdersPage() {
               const parts = o.status.split(" / ");
               const payment = parts[0] ?? o.status;
               const fulfillment = parts[1] ?? "";
-              const meta = o.lineItemsJson as { customerName?: string };
+              const meta = o.lineItemsJson;
+              const items = meta?.items?.map(i => `${i.quantity}× ${i.title}`).join(", ") ?? "";
               return (
                 <div key={o.id} className="bg-white border border-zinc-100 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-1.5">
                     <span className="font-semibold text-zinc-900">#{o.orderNumber}</span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusColor[payment] ?? "bg-zinc-100 text-zinc-500"}`}>{payment}</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${paymentColor[payment] ?? "bg-zinc-100 text-zinc-500"}`}>{payment}</span>
                   </div>
-                  <p className="text-sm text-zinc-600">{meta?.customerName ?? o.customerEmail ?? "—"}</p>
+                  <p className="text-sm font-medium text-zinc-700">{meta?.customerName ?? o.customerEmail ?? "—"}</p>
+                  {items && <p className="text-xs text-zinc-400 mt-0.5 truncate">{items}</p>}
                   <div className="flex items-center justify-between mt-2">
-                    <span className="text-sm font-medium text-zinc-900">{o.totalPrice.toLocaleString()} {o.currency}</span>
+                    <span className="text-sm font-semibold text-zinc-900">{o.totalPrice.toLocaleString()} {o.currency}</span>
                     <span className="text-xs text-zinc-400">{format(new Date(o.createdAt), "MMM d, yyyy")}</span>
                   </div>
+                  {o.trackingNumber && (
+                    <a href={o.trackingUrl ?? "#"} target="_blank" rel="noreferrer"
+                      className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline">
+                      Track: {o.trackingNumber}
+                    </a>
+                  )}
                   {fulfillment && (
-                    <span className={`mt-2 inline-block text-[10px] px-2 py-0.5 rounded-full ${fulfillment === "FULFILLED" ? "bg-blue-50 text-blue-700" : "bg-zinc-100 text-zinc-500"}`}>
+                    <span className={`mt-1.5 inline-block text-[10px] px-2 py-0.5 rounded-full ${fulfillment === "FULFILLED" ? "bg-blue-50 text-blue-700" : "bg-zinc-100 text-zinc-500"}`}>
                       {fulfillment}
                     </span>
                   )}
@@ -114,32 +136,41 @@ export default function OrdersPage() {
 
           {/* Desktop table */}
           <div className="hidden md:block bg-white border border-zinc-100 rounded-xl overflow-hidden overflow-x-auto">
-            <table className="w-full text-sm min-w-[600px]">
+            <table className="w-full text-sm min-w-[640px]">
               <thead>
-                <tr className="border-b border-zinc-100">
-                  {["Order", "Customer", "Total", "Payment", "Fulfillment", "Date"].map((h) => (
+                <tr className="border-b border-zinc-100 bg-zinc-50">
+                  {["Order", "Customer", "Items", "Total", "Payment", "Tracking", "Date"].map((h) => (
                     <th key={h} className="text-left text-xs text-zinc-400 font-medium px-4 py-3">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {orders.map((o) => {
-                  const meta = o.lineItemsJson as { customerName?: string };
                   const parts = o.status.split(" / ");
                   const payment = parts[0] ?? o.status;
-                  const fulfillment = parts[1] ?? "";
+                  const meta = o.lineItemsJson;
+                  const items = meta?.items?.map(i => `${i.quantity}× ${i.title}`).join(", ") ?? "";
                   return (
                     <tr key={o.id} className="border-b border-zinc-50 hover:bg-zinc-50 transition-colors">
                       <td className="px-4 py-3 font-medium text-zinc-900">#{o.orderNumber}</td>
-                      <td className="px-4 py-3 text-zinc-600">{meta?.customerName ?? o.customerEmail ?? "—"}</td>
-                      <td className="px-4 py-3 text-zinc-900">{o.totalPrice.toLocaleString()} {o.currency}</td>
-                      <td className="px-4 py-3">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusColor[payment] ?? "bg-zinc-100 text-zinc-500"}`}>{payment}</span>
+                      <td className="px-4 py-3 text-zinc-700 max-w-[140px]">
+                        <p className="truncate">{meta?.customerName ?? o.customerEmail ?? "—"}</p>
+                        {o.customerPhone && <p className="text-[10px] text-zinc-400">{o.customerPhone}</p>}
                       </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${fulfillment === "FULFILLED" ? "bg-blue-50 text-blue-700" : "bg-zinc-100 text-zinc-500"}`}>{fulfillment}</span>
+                      <td className="px-4 py-3 text-zinc-500 text-xs max-w-[180px]">
+                        <p className="truncate">{items}</p>
                       </td>
-                      <td className="px-4 py-3 text-zinc-400 text-xs">{format(new Date(o.createdAt), "MMM d, yyyy")}</td>
+                      <td className="px-4 py-3 font-medium text-zinc-900 whitespace-nowrap">{o.totalPrice.toLocaleString()} {o.currency}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${paymentColor[payment] ?? "bg-zinc-100 text-zinc-500"}`}>{payment}</span>
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {o.trackingNumber ? (
+                          <a href={o.trackingUrl ?? "#"} target="_blank" rel="noreferrer"
+                            className="text-blue-600 hover:underline">{o.trackingNumber}</a>
+                        ) : <span className="text-zinc-300">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-zinc-400 text-xs whitespace-nowrap">{format(new Date(o.createdAt), "MMM d, yyyy")}</td>
                     </tr>
                   );
                 })}
