@@ -137,8 +137,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile top bar */}
-        <header className="md:hidden h-12 bg-white border-b border-zinc-100 flex items-center justify-between px-4 shrink-0">
+        {/* Mobile top bar — padded for iPhone status bar */}
+        <header className="md:hidden bg-white border-b border-zinc-100 flex items-center justify-between px-4 shrink-0"
+          style={{ paddingTop: "env(safe-area-inset-top)", minHeight: "calc(48px + env(safe-area-inset-top))" }}>
           <button onClick={() => setMobileOpen(true)} className="text-zinc-500 p-1">
             <Menu size={20} />
           </button>
