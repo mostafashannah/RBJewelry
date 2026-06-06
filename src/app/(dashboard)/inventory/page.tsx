@@ -65,8 +65,11 @@ export default function InventoryPage() {
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [shopifySuggestions, setShopifySuggestions] = useState<{ id: string; title: string; priceMin: number }[]>([]);
+  const [shopifySuggestions, setShopifySuggestions] = useState<{ id: string; title: string; priceMin: number; imageUrl?: string | null }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
 
   const load = useCallback(async (q?: string) => {
     setLoading(true);
@@ -140,6 +143,36 @@ export default function InventoryPage() {
       setAiHints(hints);
     } catch { /* ignore */ }
     setAnalyzing(false);
+  };
+
+  const lookupShopify = (query: string, field: "name" | "sku") => {
+    if (suggTimeoutRef.current) clearTimeout(suggTimeoutRef.current);
+    if (query.length < 2) { setShopifySuggestions([]); setShowSuggestions(false); return; }
+    suggTimeoutRef.current = setTimeout(async () => {
+      const param = field === "sku" ? `sku=${encodeURIComponent(query)}` : `name=${encodeURIComponent(query)}`;
+      const res = await fetch(`/api/shopify/product-price?${param}`);
+      const data = await res.json();
+      const products = data.products ?? [];
+      setShopifySuggestions(products);
+      setShowSuggestions(products.length > 0);
+    }, 300);
+  };
+
+  const applyShopifyMatch = (p: { title: string; priceMin: number }, rename: boolean) => {
+    setForm((f) => ({ ...f, priceEGP: String(p.priceMin), ...(rename ? { name: p.title } : {}) }));
+    setShopifySuggestions([]); setShowSuggestions(false);
+  };
+
+  const bulkSyncPrices = async (rename: boolean) => {
+    setSyncing(true); setSyncResult(null);
+    const res = await fetch("/api/inventory/sync-prices", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rename }),
+    });
+    const data = await res.json();
+    setSyncResult(`Matched ${data.matched}/${data.total} items (${data.skuMatches} by SKU, ${data.nameMatches} by name). ${data.unmatched} unmatched.`);
+    setSyncing(false); load(); loadSilver();
+    setTimeout(() => setSyncResult(null), 8000);
   };
 
   const openAdd = () => {
@@ -233,6 +266,14 @@ export default function InventoryPage() {
             <button onClick={() => setView("grid")} className={`p-2 ${view === "grid" ? "bg-zinc-900 text-white" : "text-zinc-400 hover:bg-zinc-50"}`}><LayoutGrid size={14} /></button>
             <button onClick={() => setView("list")} className={`p-2 ${view === "list" ? "bg-zinc-900 text-white" : "text-zinc-400 hover:bg-zinc-50"}`}><List size={14} /></button>
           </div>
+          <button
+            disabled={syncing}
+            onClick={() => bulkSyncPrices(false)}
+            title="Match all inventory items to Shopify products by SKU or name and fill prices"
+            className="flex items-center gap-1.5 border border-zinc-200 text-zinc-600 text-sm px-3 py-2 rounded-xl hover:bg-zinc-50 transition-colors disabled:opacity-40"
+          >
+            <RefreshCw size={14} className={syncing ? "animate-spin" : ""} /> Sync Prices
+          </button>
           <a href="/api/inventory/export" download
             className="flex items-center gap-1.5 border border-zinc-200 text-zinc-600 text-sm px-3 py-2 rounded-xl hover:bg-zinc-50 transition-colors">
             <Download size={14} /> Export
@@ -247,6 +288,10 @@ export default function InventoryPage() {
           </button>
         </div>
       </div>
+
+      {syncResult && (
+        <div className="text-xs text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5 border border-emerald-100 mb-3">{syncResult}</div>
+      )}
 
       {/* Silver Dashboard */}
       <div className="bg-white border border-zinc-100 rounded-2xl p-4 mb-5">
@@ -533,61 +578,51 @@ export default function InventoryPage() {
               </div>
 
               {/* Name + SKU */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2 sm:col-span-1 relative">
+              <div className="space-y-3">
+                {/* Name with Shopify picker */}
+                <div className="relative">
                   <label className="text-xs font-medium text-zinc-600 block mb-1">Item Name *</label>
                   <input type="text" value={form.name}
-                    onFocus={() => { if (shopifySuggestions.length > 0) setShowSuggestions(true); }}
-                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                    onChange={async (e) => {
-                      const name = e.target.value;
-                      setForm((f) => ({ ...f, name }));
-                      if (name.length > 1) {
-                        const res = await fetch(`/api/shopify/product-price?name=${encodeURIComponent(name)}`);
-                        const data = await res.json();
-                        if (data.products?.length > 0) {
-                          setShopifySuggestions(data.products);
-                          setShowSuggestions(true);
-                          if (data.products.length === 1) {
-                            setForm((f) => ({ ...f, priceEGP: String(data.products[0].priceMin) }));
-                          }
-                        } else {
-                          setShopifySuggestions([]);
-                          setShowSuggestions(false);
-                        }
-                      } else {
-                        setShopifySuggestions([]);
-                        setShowSuggestions(false);
-                      }
-                    }}
-                    placeholder="e.g. Wave Ring"
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                    onChange={(e) => { setForm((f) => ({ ...f, name: e.target.value })); lookupShopify(e.target.value, "name"); }}
+                    placeholder="Type name to search Shopify products…"
                     className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
                   {showSuggestions && shopifySuggestions.length > 0 && (
-                    <div className="absolute z-10 left-0 right-0 top-full mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg overflow-hidden">
+                    <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg overflow-hidden">
                       {shopifySuggestions.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onMouseDown={() => {
-                            setForm((f) => ({ ...f, name: p.title, priceEGP: String(p.priceMin) }));
-                            setShowSuggestions(false);
-                          }}
-                          className="w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-50 flex items-center justify-between"
-                        >
-                          <span className="text-zinc-900 font-medium">{p.title}</span>
-                          <span className="text-xs text-emerald-600">{p.priceMin.toLocaleString()} EGP</span>
-                        </button>
+                        <div key={p.id} className="flex items-center gap-2 px-3 py-2 hover:bg-zinc-50 border-b border-zinc-50 last:border-0">
+                          {p.imageUrl ? (
+                            <img src={p.imageUrl} alt={p.title} className="w-8 h-8 rounded-lg object-cover shrink-0" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-lg bg-zinc-100 shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-zinc-900 truncate">{p.title}</p>
+                            <p className="text-[10px] text-emerald-600">{p.priceMin.toLocaleString()} EGP</p>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <button type="button" onMouseDown={() => applyShopifyMatch(p, false)}
+                              className="text-[10px] px-2 py-1 bg-zinc-100 rounded-lg text-zinc-600 hover:bg-zinc-200">
+                              Price only
+                            </button>
+                            <button type="button" onMouseDown={() => applyShopifyMatch(p, true)}
+                              className="text-[10px] px-2 py-1 bg-zinc-900 text-white rounded-lg hover:bg-zinc-700">
+                              Apply + rename
+                            </button>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   )}
-                  <p className="text-[10px] text-zinc-400 mt-1">Shopify name & price auto-fill when name matches</p>
                 </div>
+                {/* SKU */}
                 <div>
                   <label className="text-xs font-medium text-zinc-600 block mb-1">
                     <Hash size={10} className="inline mr-0.5" />SKU / Code
                   </label>
-                  <input type="text" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })}
-                    placeholder="e.g. RG-001"
+                  <input type="text" value={form.sku}
+                    onChange={(e) => { setForm({ ...form, sku: e.target.value }); lookupShopify(e.target.value, "sku"); }}
+                    placeholder="e.g. R00012-7 — searches Shopify by SKU"
                     className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-400 font-mono" />
                 </div>
               </div>

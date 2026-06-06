@@ -11,8 +11,9 @@ export async function GET() {
       db.shareholderInvestment.findMany().catch(() => []),
     ]);
 
-    // Revenue: paid orders only (exclude voided)
-    const paidOrders = orders.filter((o) => o.status.includes("PAID"));
+    // Revenue: paid orders only — Shopify stores status lowercase ("paid")
+    const PAID_STATUSES = ["paid", "partially_paid", "partially_refunded"];
+    const paidOrders = orders.filter((o) => PAID_STATUSES.includes(o.status.toLowerCase()));
     const revenue = paidOrders.reduce((s, o) => s + o.totalPrice, 0);
 
     // Expenses
