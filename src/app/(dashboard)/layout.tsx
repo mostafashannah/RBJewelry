@@ -1,38 +1,46 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard, MessageSquare, Package, ShoppingBag, BarChart2,
   Megaphone, Wallet, Settings, ClipboardList, Boxes, LogOut, Menu, X,
 } from "lucide-react";
 
-const nav = [
-  { href: "/dashboard",  label: "Overview",   icon: LayoutDashboard },
-  { href: "/inbox",      label: "Inbox",       icon: MessageSquare },
-  { href: "/products",   label: "Products",    icon: Package },
-  { href: "/inventory",  label: "Inventory",   icon: Boxes },
-  { href: "/orders",     label: "Orders",      icon: ShoppingBag },
-  { href: "/ads",        label: "Ads",         icon: Megaphone },
-  { href: "/analytics",  label: "Analytics",   icon: BarChart2 },
-  { href: "/finances",   label: "Finances",    icon: Wallet },
-  { href: "/reports",    label: "Reports",     icon: ClipboardList },
-  { href: "/settings",   label: "Settings",    icon: Settings },
-];
-
-// Bottom nav shows 5 most-used items on mobile
-const bottomNav = [
-  { href: "/inbox",     label: "Inbox",     icon: MessageSquare },
-  { href: "/inventory", label: "Inventory", icon: Boxes },
-  { href: "/orders",    label: "Orders",    icon: ShoppingBag },
-  { href: "/finances",  label: "Finances",  icon: Wallet },
-  { href: "/dashboard", label: "More",      icon: LayoutDashboard },
+const ALL_NAV = [
+  { href: "/dashboard",  label: "Overview",   icon: LayoutDashboard, adminOnly: false },
+  { href: "/inbox",      label: "Inbox",       icon: MessageSquare,   adminOnly: true },
+  { href: "/products",   label: "Products",    icon: Package,         adminOnly: true },
+  { href: "/inventory",  label: "Inventory",   icon: Boxes,           adminOnly: false },
+  { href: "/orders",     label: "Orders",      icon: ShoppingBag,     adminOnly: true },
+  { href: "/ads",        label: "Ads",         icon: Megaphone,       adminOnly: true },
+  { href: "/analytics",  label: "Analytics",   icon: BarChart2,       adminOnly: true },
+  { href: "/finances",   label: "Finances",    icon: Wallet,          adminOnly: false },
+  { href: "/reports",    label: "Reports",     icon: ClipboardList,   adminOnly: true },
+  { href: "/settings",   label: "Settings",    icon: Settings,        adminOnly: true },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [role, setRole] = useState<"ADMIN" | "LIMITED" | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (d) { setRole(d.role); setUserName(d.name); }
+      })
+      .catch(() => {});
+  }, []);
+
+  const nav = role === null ? [] : ALL_NAV.filter((item) => !item.adminOnly || role === "ADMIN");
+
+  const bottomNav = nav.filter((item) =>
+    ["/inbox", "/inventory", "/orders", "/finances", "/dashboard"].includes(item.href)
+  ).slice(0, 5);
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -72,9 +80,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <nav className="flex-1 py-4 px-2 space-y-0.5 overflow-y-auto">
           <NavLinks />
         </nav>
-        <div className="p-4 border-t border-zinc-100 flex items-center justify-between">
-          <p className="text-xs text-zinc-400">rbjewelry.co</p>
-          <button onClick={logout} className="text-zinc-400 hover:text-zinc-700 transition-colors">
+        <div className="p-4 border-t border-zinc-100 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs text-zinc-700 font-medium truncate">{userName ?? "…"}</p>
+            {role && (
+              <p className="text-[10px] text-zinc-400">
+                {role === "ADMIN" ? "Admin" : "Limited access"}
+              </p>
+            )}
+          </div>
+          <button onClick={logout} className="text-zinc-400 hover:text-zinc-700 transition-colors shrink-0">
             <LogOut size={14} />
           </button>
         </div>
@@ -105,9 +120,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <nav className="flex-1 py-4 px-2 space-y-0.5 overflow-y-auto">
           <NavLinks onClick={() => setMobileOpen(false)} />
         </nav>
-        <div className="p-4 border-t border-zinc-100 flex items-center justify-between">
-          <p className="text-xs text-zinc-400">rbjewelry.co</p>
-          <button onClick={logout} className="text-zinc-400 hover:text-zinc-700 transition-colors">
+        <div className="p-4 border-t border-zinc-100 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs text-zinc-700 font-medium truncate">{userName ?? "…"}</p>
+            {role && (
+              <p className="text-[10px] text-zinc-400">
+                {role === "ADMIN" ? "Admin" : "Limited access"}
+              </p>
+            )}
+          </div>
+          <button onClick={logout} className="text-zinc-400 hover:text-zinc-700 transition-colors shrink-0">
             <LogOut size={14} />
           </button>
         </div>
@@ -130,24 +152,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <main className="flex-1 overflow-auto pb-20 md:pb-0">{children}</main>
 
         {/* Mobile bottom nav — sits above iPhone home indicator */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-zinc-100 flex z-30"
-          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-          {bottomNav.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`flex-1 flex flex-col items-center justify-center py-3 gap-0.5 transition-colors ${
-                  active ? "text-zinc-900" : "text-zinc-400"
-                }`}
-              >
-                <Icon size={20} />
-                <span className="text-[9px] font-medium">{label}</span>
-              </Link>
-            );
-          })}
-        </nav>
+        {bottomNav.length > 0 && (
+          <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-zinc-100 flex z-30"
+            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+            {bottomNav.map(({ href, label, icon: Icon }) => {
+              const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`flex-1 flex flex-col items-center justify-center py-3 gap-0.5 transition-colors ${
+                    active ? "text-zinc-900" : "text-zinc-400"
+                  }`}
+                >
+                  <Icon size={20} />
+                  <span className="text-[9px] font-medium">{label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        )}
       </div>
     </div>
   );

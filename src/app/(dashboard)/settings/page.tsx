@@ -1,6 +1,207 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Eye, EyeOff, RefreshCw, Save } from "lucide-react";
+import { Eye, EyeOff, RefreshCw, Save, Trash2, UserPlus } from "lucide-react";
+
+// ── Team / Users ─────────────────────────────────────────────────────────────
+
+interface TeamUser {
+  id: string;
+  name: string;
+  email: string;
+  role: "ADMIN" | "LIMITED";
+  createdAt: string;
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  ADMIN: "Full Access",
+  LIMITED: "Limited Access",
+};
+
+function TeamSection() {
+  const [users, setUsers] = useState<TeamUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ name: "", email: "", password: "", role: "LIMITED" });
+  const [adding, setAdding] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = () =>
+    fetch("/api/users").then((r) => r.json()).then((d) => {
+      setUsers(d.users ?? []);
+      setLoading(false);
+    });
+
+  useEffect(() => { load(); }, []);
+
+  const addUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdding(true);
+    setMsg(null);
+    const res = await fetch("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setMsg({ ok: true, text: `${data.user.name} added.` });
+      setForm({ name: "", email: "", password: "", role: "LIMITED" });
+      setFormOpen(false);
+      load();
+    } else {
+      setMsg({ ok: false, text: data.error ?? "Failed to add user." });
+    }
+    setAdding(false);
+    setTimeout(() => setMsg(null), 5000);
+  };
+
+  const deleteUser = async (id: string, name: string) => {
+    if (!confirm(`Remove ${name}?`)) return;
+    const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
+    if (res.ok) load();
+    else {
+      const d = await res.json();
+      setMsg({ ok: false, text: d.error ?? "Delete failed." });
+      setTimeout(() => setMsg(null), 4000);
+    }
+  };
+
+  return (
+    <div className="bg-white border border-zinc-100 rounded-xl p-6">
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h2 className="text-sm font-semibold text-zinc-900">Team</h2>
+          <p className="text-xs text-zinc-500 mt-0.5">Manage who can access this dashboard</p>
+        </div>
+        <button
+          onClick={() => setFormOpen((o) => !o)}
+          className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-zinc-900 text-white rounded-lg hover:bg-zinc-700 transition-colors"
+        >
+          <UserPlus size={12} />
+          Add user
+        </button>
+      </div>
+
+      {/* Add form */}
+      {formOpen && (
+        <form onSubmit={addUser} className="mb-5 p-4 bg-zinc-50 rounded-xl space-y-3 border border-zinc-100">
+          <p className="text-xs font-medium text-zinc-700">New user</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-zinc-500 mb-1 block">Name</label>
+              <input
+                required
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Sara Ahmed"
+                className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-400"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-zinc-500 mb-1 block">Email</label>
+              <input
+                required
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="sara@rbjewelry.co"
+                className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-400"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-zinc-500 mb-1 block">Password</label>
+              <input
+                required
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                placeholder="Set a password"
+                className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-400"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-zinc-500 mb-1 block">Permission</label>
+              <select
+                value={form.role}
+                onChange={(e) => setForm({ ...form, role: e.target.value })}
+                className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-400 bg-white"
+              >
+                <option value="LIMITED">Limited Access</option>
+                <option value="ADMIN">Full Access</option>
+              </select>
+            </div>
+          </div>
+          <div className="text-xs text-zinc-400">
+            <strong>Limited Access:</strong> can only add inventory items and expenses.{" "}
+            <strong>Full Access:</strong> same as admin.
+          </div>
+          {msg && <p className={`text-xs ${msg.ok ? "text-green-700" : "text-red-600"}`}>{msg.text}</p>}
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={adding}
+              className="text-xs px-4 py-2 bg-zinc-900 text-white rounded-lg hover:bg-zinc-700 disabled:opacity-40 transition-colors"
+            >
+              {adding ? "Adding…" : "Add user"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormOpen(false)}
+              className="text-xs px-4 py-2 border border-zinc-200 rounded-lg text-zinc-500 hover:bg-zinc-50 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Users list */}
+      {loading ? (
+        <p className="text-xs text-zinc-400">Loading…</p>
+      ) : (
+        <div className="space-y-0">
+          {/* Built-in admin row */}
+          <div className="flex items-center justify-between py-3 border-b border-zinc-50">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-zinc-900">Admin</p>
+              <p className="text-xs text-zinc-400">Password login (ADMIN_PASSWORD)</p>
+            </div>
+            <span className="text-xs bg-zinc-900 text-white px-2 py-0.5 rounded-full shrink-0">Full Access</span>
+          </div>
+
+          {users.map((u) => (
+            <div key={u.id} className="flex items-center justify-between py-3 border-b border-zinc-50 last:border-0 gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-zinc-900 truncate">{u.name}</p>
+                <p className="text-xs text-zinc-400 truncate">{u.email}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  u.role === "ADMIN"
+                    ? "bg-zinc-900 text-white"
+                    : "bg-zinc-100 text-zinc-600"
+                }`}>
+                  {ROLE_LABELS[u.role]}
+                </span>
+                <button
+                  onClick={() => deleteUser(u.id, u.name)}
+                  className="text-zinc-300 hover:text-red-500 transition-colors p-1"
+                  title="Remove user"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {users.length === 0 && (
+            <p className="text-xs text-zinc-400 py-2">No staff users yet. Add one above.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface AiConfig {
   id: string;
@@ -198,6 +399,9 @@ export default function SettingsPage() {
         <h1 className="text-xl font-semibold text-zinc-900">Settings</h1>
         <p className="text-sm text-zinc-500 mt-1">Configure AI agent and integrations</p>
       </div>
+
+      {/* Team */}
+      <TeamSection />
 
       {/* AI Agent */}
       <div className="bg-white border border-zinc-100 rounded-xl p-6">

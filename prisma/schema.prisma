@@ -7,6 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  ADMIN
+  LIMITED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(LIMITED)
+  createdAt    DateTime @default(now())
+}
+
 enum Platform {
   INSTAGRAM_DM
   INSTAGRAM_COMMENT
