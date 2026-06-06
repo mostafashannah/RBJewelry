@@ -5,7 +5,7 @@ import { InventoryStatus } from "@prisma/client";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const body = await req.json();
-  const { name, sku, category, material, weightG, colors, quantity, costEGP, priceEGP, photoUrl, status, orderNo, notes } = body;
+  const { name, sku, category, material, weightG, colors, size, quantity, costEGP, priceEGP, photoUrl, status, orderNo, notes } = body;
 
   const item = await db.inventoryItem.update({
     where: { id: params.id },
@@ -16,6 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       ...(material !== undefined && { material }),
       ...(weightG !== undefined && { weightG: parseFloat(weightG) }),
       ...(colors !== undefined && { colors: Array.isArray(colors) ? colors : [] }),
+      ...(size !== undefined && { size: size || null }),
       ...(quantity !== undefined && { quantity: parseInt(quantity) }),
       ...(costEGP !== undefined && { costEGP: costEGP ? parseFloat(costEGP) : null }),
       ...(priceEGP !== undefined && { priceEGP: priceEGP ? parseFloat(priceEGP) : null }),

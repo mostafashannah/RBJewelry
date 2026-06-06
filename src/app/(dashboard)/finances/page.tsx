@@ -1,37 +1,46 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { format } from "date-fns";
-import { Plus, Download, TrendingUp, TrendingDown, Package, ShoppingBag } from "lucide-react";
+import { Plus, Download, TrendingUp, TrendingDown, Package, ShoppingBag, Users, Trash2 } from "lucide-react";
 
 interface Expense {
-  id: string;
-  category: string;
-  amount: number;
-  currency: string;
-  description: string | null;
-  date: string;
+  id: string; category: string; amount: number; currency: string;
+  description: string | null; date: string;
+}
+
+interface Investment {
+  id: string; name: string; amount: number; currency: string;
+  date: string; notes: string | null;
 }
 
 interface Summary {
-  revenue: number;
-  totalExpenses: number;
-  profit: number;
-  stockValue: number;
-  stockItemCount: number;
-  paidOrderCount: number;
-  byCategory: Record<string, number>;
+  revenue: number; totalExpenses: number; profit: number;
+  stockValue: number; stockItemCount: number; paidOrderCount: number;
+  byCategory: Record<string, number>; totalInvested: number; investmentCount: number;
 }
 
 const CATEGORIES = ["Ad Spend", "Shipping", "Materials", "Operations", "Marketing", "Other"];
+
+const inputCls = "w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-400";
+const modalCls = "fixed inset-0 bg-black/20 flex items-center justify-center z-50 p-4";
+const cardCls = "bg-white border border-zinc-100 rounded-xl p-4";
 
 export default function FinancesPage() {
   const currentMonth = format(new Date(), "yyyy-MM");
   const [month, setMonth] = useState(currentMonth);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [investments, setInvestments] = useState<Investment[]>([]);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ category: CATEGORIES[0], amount: "", description: "", date: format(new Date(), "yyyy-MM-dd") });
+
+  // Expense form
+  const [showAddExp, setShowAddExp] = useState(false);
+  const [expForm, setExpForm] = useState({ category: CATEGORIES[0], amount: "", description: "", date: format(new Date(), "yyyy-MM-dd") });
+
+  // Investment form
+  const [showAddInv, setShowAddInv] = useState(false);
+  const [invForm, setInvForm] = useState({ name: "", amount: "", date: format(new Date(), "yyyy-MM-dd"), notes: "" });
+
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState("");
 
@@ -44,232 +53,272 @@ export default function FinancesPage() {
     setLoading(false);
   }, [month]);
 
-  useEffect(() => { loadExpenses(); }, [month, loadExpenses]);
-
-  useEffect(() => {
-    fetch("/api/finances/summary").then((r) => r.json()).then(setSummary);
+  const loadInvestments = useCallback(async () => {
+    const res = await fetch("/api/finances/investments");
+    const data = await res.json();
+    setInvestments(data.investments ?? []);
   }, []);
 
+  const reloadSummary = () => {
+    fetch("/api/finances/summary").then((r) => r.json()).then(setSummary).catch(() => null);
+  };
+
+  useEffect(() => { loadExpenses(); }, [loadExpenses]);
+  useEffect(() => { loadInvestments(); reloadSummary(); }, [loadInvestments]);
+
   const addExpense = async () => {
-    if (!form.amount) return;
+    if (!expForm.amount) return;
     await fetch("/api/finances/expenses", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        amount: parseFloat(form.amount),
-        date: new Date(form.date).toISOString(),
-      }),
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...expForm, amount: parseFloat(expForm.amount), date: new Date(expForm.date).toISOString() }),
     });
-    setShowAdd(false);
-    setForm({ category: CATEGORIES[0], amount: "", description: "", date: format(new Date(), "yyyy-MM-dd") });
-    loadExpenses();
+    setShowAddExp(false);
+    setExpForm({ category: CATEGORIES[0], amount: "", description: "", date: format(new Date(), "yyyy-MM-dd") });
+    loadExpenses(); reloadSummary();
+  };
+
+  const addInvestment = async () => {
+    if (!invForm.name || !invForm.amount) return;
+    await fetch("/api/finances/investments", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...invForm, amount: parseFloat(invForm.amount), date: new Date(invForm.date).toISOString() }),
+    });
+    setShowAddInv(false);
+    setInvForm({ name: "", amount: "", date: format(new Date(), "yyyy-MM-dd"), notes: "" });
+    loadInvestments(); reloadSummary();
+  };
+
+  const deleteInvestment = async (id: string) => {
+    await fetch("/api/finances/investments", {
+      method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }),
+    });
+    loadInvestments(); reloadSummary();
   };
 
   const exportToSheets = async () => {
     setExporting(true);
     const res = await fetch("/api/finances/export", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ month }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month }),
     });
     const data = await res.json();
-    if (data.ok) {
-      setExportMsg(`Exported: Revenue ${data.revenue?.toLocaleString()} EGP | Expenses ${data.totalExpenses?.toLocaleString()} EGP | Profit ${data.profit?.toLocaleString()} EGP`);
-    }
+    if (data.ok) setExportMsg(`Exported · Revenue ${data.revenue?.toLocaleString()} · Expenses ${data.totalExpenses?.toLocaleString()} · Profit ${data.profit?.toLocaleString()} EGP`);
     setExporting(false);
   };
 
   const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+  const totalInvested = investments.reduce((s, i) => s + i.amount, 0);
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="p-4 md:p-8 max-w-4xl space-y-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-zinc-900">Finances</h1>
-          <p className="text-sm text-zinc-500 mt-1">Track expenses and export to Google Sheets</p>
+          <p className="text-sm text-zinc-500 mt-0.5">P&L, expenses, and investments</p>
         </div>
-        <div className="flex gap-2">
-          <select
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="text-xs border border-zinc-200 rounded-lg px-3 py-1.5 focus:outline-none bg-white"
-          >
+        <div className="flex gap-2 flex-wrap">
+          <select value={month} onChange={(e) => setMonth(e.target.value)}
+            className="text-xs border border-zinc-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none">
             <option value="all">All time</option>
             <option value="2026-06">June 2026</option>
             <option value="2026-05">May 2026</option>
             <option value="2026-04">April 2026</option>
             <option value="2026-03">March 2026</option>
           </select>
-          <button
-            onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-zinc-900 text-white rounded-lg hover:bg-zinc-700 transition-colors"
-          >
+          <button onClick={() => setShowAddExp(true)}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-zinc-900 text-white rounded-lg hover:bg-zinc-700 transition-colors">
             <Plus size={13} /> Add Expense
           </button>
-          <button
-            onClick={exportToSheets}
-            disabled={exporting}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-zinc-200 rounded-lg hover:bg-zinc-50 text-zinc-600 transition-colors disabled:opacity-40"
-          >
-            <Download size={13} /> Export to Sheets
+          <button onClick={() => setShowAddInv(true)}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-purple-200 text-purple-600 rounded-lg hover:bg-purple-50 transition-colors">
+            <Users size={13} /> Add Investment
+          </button>
+          <button onClick={exportToSheets} disabled={exporting}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-zinc-200 rounded-lg hover:bg-zinc-50 text-zinc-600 transition-colors disabled:opacity-40">
+            <Download size={13} /> Export
           </button>
         </div>
       </div>
 
-      {exportMsg && (
-        <div className="mb-4 text-xs text-green-700 bg-green-50 rounded-lg px-4 py-2">{exportMsg}</div>
-      )}
+      {exportMsg && <div className="text-xs text-green-700 bg-green-50 rounded-lg px-4 py-2">{exportMsg}</div>}
 
-      {/* P&L Summary — all-time from orders + expenses */}
+      {/* All-time P&L summary */}
       {summary && (
-        <div className="mb-6 space-y-3">
-          <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">All-time P&L</p>
+        <div className="space-y-3">
+          <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide">All-time P&L</p>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="bg-white border border-zinc-100 rounded-xl p-4">
-              <div className="flex items-center gap-1.5 mb-2">
-                <ShoppingBag size={13} className="text-emerald-500" />
-                <p className="text-xs text-zinc-400">Revenue (paid orders)</p>
-              </div>
+            <div className={cardCls}>
+              <div className="flex items-center gap-1.5 mb-2"><ShoppingBag size={13} className="text-emerald-500" /><p className="text-xs text-zinc-400">Revenue</p></div>
               <p className="text-xl font-semibold text-emerald-600">{summary.revenue.toLocaleString()} EGP</p>
               <p className="text-[10px] text-zinc-400 mt-1">{summary.paidOrderCount} paid orders</p>
             </div>
-            <div className="bg-white border border-zinc-100 rounded-xl p-4">
-              <div className="flex items-center gap-1.5 mb-2">
-                <TrendingDown size={13} className="text-red-400" />
-                <p className="text-xs text-zinc-400">Total Expenses</p>
-              </div>
+            <div className={cardCls}>
+              <div className="flex items-center gap-1.5 mb-2"><TrendingDown size={13} className="text-red-400" /><p className="text-xs text-zinc-400">Expenses</p></div>
               <p className="text-xl font-semibold text-red-500">{summary.totalExpenses.toLocaleString()} EGP</p>
               <p className="text-[10px] text-zinc-400 mt-1">{Object.keys(summary.byCategory).length} categories</p>
             </div>
-            <div className="bg-white border border-zinc-100 rounded-xl p-4">
+            <div className={cardCls}>
               <div className="flex items-center gap-1.5 mb-2">
                 <TrendingUp size={13} className={summary.profit >= 0 ? "text-emerald-500" : "text-red-400"} />
-                <p className="text-xs text-zinc-400">Net Profit / Loss</p>
+                <p className="text-xs text-zinc-400">Net P&L</p>
               </div>
               <p className={`text-xl font-semibold ${summary.profit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
                 {summary.profit >= 0 ? "+" : ""}{summary.profit.toLocaleString()} EGP
               </p>
             </div>
-            <div className="bg-white border border-zinc-100 rounded-xl p-4">
-              <div className="flex items-center gap-1.5 mb-2">
-                <Package size={13} className="text-amber-500" />
-                <p className="text-xs text-zinc-400">Stock Value (cost)</p>
-              </div>
+            <div className={cardCls}>
+              <div className="flex items-center gap-1.5 mb-2"><Package size={13} className="text-amber-500" /><p className="text-xs text-zinc-400">Stock Value</p></div>
               <p className="text-xl font-semibold text-amber-600">{summary.stockValue.toLocaleString()} EGP</p>
-              <p className="text-[10px] text-zinc-400 mt-1">{summary.stockItemCount} items in stock</p>
+              <p className="text-[10px] text-zinc-400 mt-1">{summary.stockItemCount} items</p>
             </div>
           </div>
-          {/* Expenses by category */}
-          <div className="bg-white border border-zinc-100 rounded-xl p-4">
-            <p className="text-xs font-medium text-zinc-500 mb-3">Expenses by Category</p>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(summary.byCategory).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => (
-                <div key={cat} className="flex items-center gap-2 bg-zinc-50 rounded-lg px-3 py-1.5">
-                  <span className="text-xs text-zinc-600 font-medium">{cat}</span>
-                  <span className="text-xs text-zinc-400">{amt.toLocaleString()} EGP</span>
-                </div>
-              ))}
-            </div>
+          <div className={`${cardCls} flex flex-wrap gap-2`}>
+            {Object.entries(summary.byCategory).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => (
+              <div key={cat} className="flex items-center gap-2 bg-zinc-50 rounded-lg px-3 py-1.5">
+                <span className="text-xs text-zinc-600 font-medium">{cat}</span>
+                <span className="text-xs text-zinc-400">{amt.toLocaleString()} EGP</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Month filter summary */}
-      <div className="grid grid-cols-2 gap-3 mb-5">
-        <div className="bg-white border border-zinc-100 rounded-xl p-4">
-          <p className="text-xs text-zinc-400">Expenses ({month === "all" ? "all time" : month})</p>
-          <p className="text-xl font-semibold text-zinc-900 mt-1">{totalExpenses.toLocaleString()} EGP</p>
+      {/* Shareholder Investments */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Shareholder Investments</p>
+          <p className="text-sm font-semibold text-purple-600">{totalInvested.toLocaleString()} EGP total</p>
         </div>
-        <div className="bg-white border border-zinc-100 rounded-xl p-4">
-          <p className="text-xs text-zinc-400">Entries</p>
-          <p className="text-xl font-semibold text-zinc-900 mt-1">{expenses.length}</p>
-        </div>
+        {investments.length === 0 ? (
+          <div className={`${cardCls} text-center py-6 text-sm text-zinc-400`}>No investments yet</div>
+        ) : (
+          <div className={`${cardCls} overflow-hidden overflow-x-auto`}>
+            <table className="w-full text-sm min-w-[400px]">
+              <thead>
+                <tr className="border-b border-zinc-100">
+                  {["Shareholder", "Amount", "Date", "Notes", ""].map((h) => (
+                    <th key={h} className="text-left text-xs text-zinc-400 font-medium px-4 py-2.5">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {investments.map((inv) => (
+                  <tr key={inv.id} className="border-b border-zinc-50 hover:bg-zinc-50">
+                    <td className="px-4 py-3 font-medium text-zinc-900">{inv.name}</td>
+                    <td className="px-4 py-3 font-semibold text-purple-600">{inv.amount.toLocaleString()} {inv.currency}</td>
+                    <td className="px-4 py-3 text-zinc-400 text-xs">{format(new Date(inv.date), "MMM d, yyyy")}</td>
+                    <td className="px-4 py-3 text-zinc-500 text-xs">{inv.notes ?? "—"}</td>
+                    <td className="px-4 py-3">
+                      <button onClick={() => deleteInvestment(inv.id)} className="text-zinc-300 hover:text-red-400 transition-colors">
+                        <Trash2 size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* Add expense modal */}
-      {showAdd && (
-        <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50" onClick={() => setShowAdd(false)}>
-          <div className="bg-white rounded-2xl p-6 w-96 shadow-lg" onClick={(e) => e.stopPropagation()}>
+      {/* Expenses for selected month */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide">
+            Expenses — {month === "all" ? "All time" : month}
+          </p>
+          <p className="text-sm font-semibold text-zinc-700">{totalExpenses.toLocaleString()} EGP · {expenses.length} entries</p>
+        </div>
+        {loading ? (
+          <p className="text-sm text-zinc-400 text-center py-10">Loading…</p>
+        ) : expenses.length === 0 ? (
+          <p className="text-sm text-zinc-400 text-center py-10">No expenses for this period.</p>
+        ) : (
+          <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden overflow-x-auto">
+            <table className="w-full text-sm min-w-[480px]">
+              <thead>
+                <tr className="border-b border-zinc-100">
+                  {["Category", "Amount", "Description", "Date"].map((h) => (
+                    <th key={h} className="text-left text-xs text-zinc-400 font-medium px-4 py-3">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {expenses.map((e) => (
+                  <tr key={e.id} className="border-b border-zinc-50 hover:bg-zinc-50">
+                    <td className="px-4 py-3 text-zinc-700">{e.category}</td>
+                    <td className="px-4 py-3 font-medium text-zinc-900">{e.amount.toLocaleString()} {e.currency}</td>
+                    <td className="px-4 py-3 text-zinc-500">{e.description ?? "—"}</td>
+                    <td className="px-4 py-3 text-zinc-400 text-xs">{format(new Date(e.date), "MMM d, yyyy")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Add Expense Modal */}
+      {showAddExp && (
+        <div className={modalCls} onClick={() => setShowAddExp(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-lg" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-sm font-semibold mb-4">Add Expense</h2>
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-zinc-500 mb-1 block">Category</label>
-                <select
-                  value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
-                >
+                <select value={expForm.category} onChange={(e) => setExpForm({ ...expForm, category: e.target.value })} className={inputCls}>
                   {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
                 </select>
               </div>
               <div>
                 <label className="text-xs text-zinc-500 mb-1 block">Amount (EGP)</label>
-                <input
-                  type="number"
-                  value={form.amount}
-                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                  className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
-                  placeholder="0"
-                />
+                <input type="number" value={expForm.amount} onChange={(e) => setExpForm({ ...expForm, amount: e.target.value })} className={inputCls} placeholder="0" />
               </div>
               <div>
                 <label className="text-xs text-zinc-500 mb-1 block">Description</label>
-                <input
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
-                  placeholder="Optional note"
-                />
+                <input value={expForm.description} onChange={(e) => setExpForm({ ...expForm, description: e.target.value })} className={inputCls} placeholder="Optional" />
               </div>
               <div>
                 <label className="text-xs text-zinc-500 mb-1 block">Date</label>
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => setForm({ ...form, date: e.target.value })}
-                  className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
-                />
+                <input type="date" value={expForm.date} onChange={(e) => setExpForm({ ...expForm, date: e.target.value })} className={inputCls} />
               </div>
               <div className="flex gap-2 pt-1">
-                <button onClick={() => setShowAdd(false)} className="flex-1 border border-zinc-200 rounded-lg py-2 text-sm text-zinc-600 hover:bg-zinc-50">
-                  Cancel
-                </button>
-                <button onClick={addExpense} className="flex-1 bg-zinc-900 text-white rounded-lg py-2 text-sm hover:bg-zinc-700">
-                  Save
-                </button>
+                <button onClick={() => setShowAddExp(false)} className="flex-1 border border-zinc-200 rounded-lg py-2 text-sm text-zinc-600 hover:bg-zinc-50">Cancel</button>
+                <button onClick={addExpense} className="flex-1 bg-zinc-900 text-white rounded-lg py-2 text-sm hover:bg-zinc-700">Save</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Expense table */}
-      {loading ? (
-        <p className="text-sm text-zinc-400 text-center py-10">Loading…</p>
-      ) : expenses.length === 0 ? (
-        <p className="text-sm text-zinc-400 text-center py-10">No expenses for {month === "all" ? "this period" : month}.</p>
-      ) : (
-        <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden overflow-x-auto">
-          <table className="w-full text-sm min-w-[480px]">
-            <thead>
-              <tr className="border-b border-zinc-100">
-                {["Category", "Amount", "Description", "Date"].map((h) => (
-                  <th key={h} className="text-left text-xs text-zinc-400 font-medium px-4 py-3">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {expenses.map((e) => (
-                <tr key={e.id} className="border-b border-zinc-50 hover:bg-zinc-50">
-                  <td className="px-4 py-3 text-zinc-700">{e.category}</td>
-                  <td className="px-4 py-3 font-medium text-zinc-900">{e.amount.toLocaleString()} {e.currency}</td>
-                  <td className="px-4 py-3 text-zinc-500">{e.description ?? "—"}</td>
-                  <td className="px-4 py-3 text-zinc-400 text-xs">{format(new Date(e.date), "MMM d, yyyy")}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Add Investment Modal */}
+      {showAddInv && (
+        <div className={modalCls} onClick={() => setShowAddInv(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-sm font-semibold mb-4">Add Shareholder Investment</h2>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Shareholder Name</label>
+                <input value={invForm.name} onChange={(e) => setInvForm({ ...invForm, name: e.target.value })} className={inputCls} placeholder="e.g. Mostafa" />
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Amount (EGP)</label>
+                <input type="number" value={invForm.amount} onChange={(e) => setInvForm({ ...invForm, amount: e.target.value })} className={inputCls} placeholder="0" />
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Date</label>
+                <input type="date" value={invForm.date} onChange={(e) => setInvForm({ ...invForm, date: e.target.value })} className={inputCls} />
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Notes</label>
+                <input value={invForm.notes} onChange={(e) => setInvForm({ ...invForm, notes: e.target.value })} className={inputCls} placeholder="Optional" />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setShowAddInv(false)} className="flex-1 border border-zinc-200 rounded-lg py-2 text-sm text-zinc-600 hover:bg-zinc-50">Cancel</button>
+                <button onClick={addInvestment} className="flex-1 bg-purple-600 text-white rounded-lg py-2 text-sm hover:bg-purple-700">Save</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

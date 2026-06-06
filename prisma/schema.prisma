@@ -190,6 +190,7 @@ model InventoryItem {
   material  String          @default("Sterling Silver")
   weightG   Float
   colors    String[]
+  size      String?
   quantity  Int             @default(1)
   costEGP   Float?
   priceEGP  Float?
@@ -212,6 +213,16 @@ model Expense {
   currency    String   @default("EGP")
   description String?
   date        DateTime
+  createdAt   DateTime @default(now())
+}
+
+model ShareholderInvestment {
+  id          String   @id @default(cuid())
+  name        String
+  amount      Float
+  currency    String   @default("EGP")
+  date        DateTime
+  notes       String?
   createdAt   DateTime @default(now())
 }
 

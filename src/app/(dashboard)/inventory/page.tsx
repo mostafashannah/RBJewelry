@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Plus, Camera, X, Scale, Tag, Package, Loader2, CheckCircle,
   Trash2, Edit2, Upload, FileSpreadsheet, Sparkles, AlertCircle,
-  TrendingUp, RefreshCw, Hash, ShoppingBag, LayoutGrid, List, Download,
+  TrendingUp, RefreshCw, Hash, ShoppingBag, LayoutGrid, List, Download, Search,
 } from "lucide-react";
 
 const CATEGORIES = ["Ring", "Necklace", "Bracelet", "Earrings", "Anklet", "Set", "Other"];
@@ -20,7 +20,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 interface Item {
   id: string; name: string; sku: string | null; category: string; material: string;
-  weightG: number; colors: string[]; quantity: number; costEGP: number | null;
+  weightG: number; colors: string[]; size: string | null; quantity: number; costEGP: number | null;
   priceEGP: number | null; photoUrl: string | null; status: string;
   orderNo: string | null; notes: string | null; createdAt: string;
 }
@@ -33,7 +33,7 @@ interface SilverData {
 
 const emptyForm = {
   name: "", sku: "", category: CATEGORIES[0], material: MATERIALS[0],
-  weightG: "", colors: [] as string[], quantity: "1",
+  weightG: "", colors: [] as string[], size: "", quantity: "1",
   costEGP: "", priceEGP: "", orderNo: "", notes: "",
 };
 
@@ -64,11 +64,16 @@ export default function InventoryPage() {
   const importFileRef = useRef<HTMLInputElement>(null);
 
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (q?: string) => {
     setLoading(true);
     setLoadError(null);
-    const params = filterStatus !== "all" ? `?status=${filterStatus}` : "";
+    const p = new URLSearchParams();
+    if (filterStatus !== "all") p.set("status", filterStatus);
+    const s = q !== undefined ? q : search;
+    if (s.trim()) p.set("search", s.trim());
+    const params = p.toString() ? `?${p}` : "";
     const res = await fetch(`/api/inventory${params}`);
     const data = await res.json();
     if (!res.ok) setLoadError(data.error ?? "Failed to load");
@@ -85,6 +90,12 @@ export default function InventoryPage() {
   };
 
   useEffect(() => { load(); loadSilver(); }, [load]);
+  // Re-fetch when search changes (debounced)
+  useEffect(() => {
+    const t = setTimeout(() => load(search), 350);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   const toggleColor = (color: string) => {
     setForm((f) => ({
@@ -137,7 +148,7 @@ export default function InventoryPage() {
     setEditItem(item);
     setForm({
       name: item.name, sku: item.sku ?? "", category: item.category, material: item.material,
-      weightG: String(item.weightG), colors: item.colors ?? [],
+      weightG: String(item.weightG), colors: item.colors ?? [], size: item.size ?? "",
       quantity: String(item.quantity),
       costEGP: item.costEGP != null ? String(item.costEGP) : "",
       priceEGP: item.priceEGP != null ? String(item.priceEGP) : "",
@@ -201,8 +212,18 @@ export default function InventoryPage() {
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-5 gap-3">
         <h1 className="text-lg font-semibold text-zinc-900">Inventory</h1>
+        {/* Search bar */}
+        <div className="relative flex-1 sm:max-w-xs">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name or SKU…"
+            className="w-full border border-zinc-200 rounded-xl pl-8 pr-3 py-2 text-sm focus:outline-none focus:border-zinc-400"
+          />
+        </div>
         <div className="flex gap-2 flex-wrap">
           {/* View toggle */}
           <div className="flex border border-zinc-200 rounded-xl overflow-hidden">
@@ -562,18 +583,24 @@ export default function InventoryPage() {
               </div>
 
               {/* Weight + Qty */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs font-medium text-zinc-600 block mb-1">Weight (g) *</label>
                   <input type="number" step="0.1" min="0" value={form.weightG}
                     onChange={(e) => setForm({ ...form, weightG: e.target.value })} placeholder="e.g. 4.5"
-                    className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
+                    className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-zinc-600 block mb-1">Size</label>
+                  <input value={form.size} onChange={(e) => setForm({ ...form, size: e.target.value })}
+                    placeholder="e.g. 7, M, 16mm"
+                    className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
                 </div>
                 <div>
                   <label className="text-xs font-medium text-zinc-600 block mb-1">Quantity</label>
                   <input type="number" min="1" value={form.quantity}
                     onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-                    className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
+                    className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
                 </div>
               </div>
 

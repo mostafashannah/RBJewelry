@@ -4,10 +4,11 @@ import { db } from "@/lib/db";
 
 export async function GET() {
   try {
-    const [expenses, orders, stockItems] = await Promise.all([
+    const [expenses, orders, stockItems, investments] = await Promise.all([
       db.expense.findMany(),
       db.shopifyOrderCache.findMany(),
       db.inventoryItem.findMany({ where: { status: "IN_STOCK" } }),
+      db.shareholderInvestment.findMany(),
     ]);
 
     // Revenue: paid orders only (exclude voided)
@@ -26,6 +27,8 @@ export async function GET() {
       byCategory[e.category] = (byCategory[e.category] ?? 0) + e.amount;
     }
 
+    const totalInvested = investments.reduce((s, i) => s + i.amount, 0);
+
     return NextResponse.json({
       revenue,
       totalExpenses,
@@ -34,6 +37,8 @@ export async function GET() {
       stockItemCount: stockItems.length,
       paidOrderCount: paidOrders.length,
       byCategory,
+      totalInvested,
+      investmentCount: investments.length,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

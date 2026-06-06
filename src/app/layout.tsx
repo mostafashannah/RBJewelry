@@ -2,10 +2,14 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "RB Jewelry — Dashboard",
+  title: "RB Jewelry",
   description: "RB Jewelry management dashboard",
   manifest: "/manifest.json",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "RB Jewelry" },
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "RB Jewelry" },
+  icons: {
+    apple: "/apple-touch-icon.png",
+    icon: [{ url: "/icon-192.png", sizes: "192x192" }, { url: "/icon-512.png", sizes: "512x512" }],
+  },
 };
 
 export const viewport: Viewport = {
