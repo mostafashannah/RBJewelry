@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { TrendingUp, TrendingDown, Package, ShoppingBag, Users, Send, Loader2 } from "lucide-react";
+import { TrendingUp, TrendingDown, Package, ShoppingBag, Users, Send, Loader2, Bell, BellOff } from "lucide-react";
 import Link from "next/link";
 
 interface Summary {
@@ -20,6 +20,30 @@ export default function DashboardPage() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [asking, setAsking] = useState(false);
+  const [notifStatus, setNotifStatus] = useState<"default" | "granted" | "denied">("default");
+
+  useEffect(() => {
+    if ("Notification" in window) setNotifStatus(Notification.permission as "default" | "granted" | "denied");
+  }, []);
+
+  const enableNotifications = async () => {
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
+    const perm = await Notification.requestPermission();
+    setNotifStatus(perm as "default" | "granted" | "denied");
+    if (perm === "granted") {
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      const pub = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!pub) return;
+      const existing = await reg.pushManager.getSubscription();
+      const sub = existing ?? await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: pub,
+      });
+      await fetch("/api/push/subscribe", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sub),
+      });
+    }
+  };
 
   useEffect(() => {
     fetch("/api/finances/summary")
@@ -46,9 +70,27 @@ export default function DashboardPage() {
 
   return (
     <div className="p-4 md:p-8 space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-zinc-900">Overview</h1>
-        <p className="text-sm text-zinc-500 mt-1">RB Jewelry dashboard</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-zinc-900">Overview</h1>
+          <p className="text-sm text-zinc-500 mt-1">RB Jewelry dashboard</p>
+        </div>
+        {notifStatus !== "granted" && (
+          <button onClick={enableNotifications}
+            className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border transition-colors shrink-0 ${
+              notifStatus === "denied"
+                ? "border-red-200 text-red-400 bg-red-50"
+                : "border-amber-200 text-amber-600 bg-amber-50 hover:bg-amber-100"
+            }`}>
+            {notifStatus === "denied" ? <BellOff size={13} /> : <Bell size={13} />}
+            {notifStatus === "denied" ? "Notifications blocked" : "Enable Notifications"}
+          </button>
+        )}
+        {notifStatus === "granted" && (
+          <span className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-200 shrink-0">
+            <Bell size={13} /> Notifications on
+          </span>
+        )}
       </div>
 
       {/* Financial P&L */}

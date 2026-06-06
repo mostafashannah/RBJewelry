@@ -126,18 +126,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="w-7" />
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-auto pb-16 md:pb-0">{children}</main>
+        {/* Page content — extra bottom padding for iPhone home bar */}
+        <main className="flex-1 overflow-auto pb-20 md:pb-0">{children}</main>
 
-        {/* Mobile bottom nav */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-zinc-100 flex z-30">
+        {/* Mobile bottom nav — sits above iPhone home indicator */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-zinc-100 flex z-30"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
           {bottomNav.map(({ href, label, icon: Icon }) => {
             const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
             return (
               <Link
                 key={href}
                 href={href}
-                className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors ${
+                className={`flex-1 flex flex-col items-center justify-center py-3 gap-0.5 transition-colors ${
                   active ? "text-zinc-900" : "text-zinc-400"
                 }`}
               >
