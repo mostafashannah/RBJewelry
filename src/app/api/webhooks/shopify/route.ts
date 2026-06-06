@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyShopifyHmac } from "@/lib/shopify/webhook-verify";
 import { syncProductsToCache } from "@/lib/ai/product-context";
+import { sendPushToAll } from "@/lib/push";
 
 interface ShopifyFulfillment {
   status: string;
@@ -100,7 +101,49 @@ export async function POST(req: NextRequest) {
         data: { status: "SOLD" },
       });
     }
+
+    // On new order: check inventory for each item and send push notification
+    if (topic === "orders/create") {
+      checkInventoryAndNotify(order).catch(console.error);
+    }
   }
 
   return NextResponse.json({ ok: true });
 }
+
+async function checkInventoryAndNotify(order: ShopifyOrderPayload) {
+  const lineItems = order.line_items as { title: string; quantity: number; sku?: string }[];
+  if (!lineItems?.length) return;
+
+  const inventoryItems = await db.inventoryItem.findMany({
+    where: { status: "IN_STOCK" },
+  });
+
+  const results: string[] = [];
+
+  for (const item of lineItems) {
+    const title = item.title.toLowerCase();
+    const qty = item.quantity;
+
+    // Match by SKU first, then by name similarity
+    const match = inventoryItems.find((inv) =>
+      (item.sku && inv.sku && inv.sku.toLowerCase() === item.sku.toLowerCase()) ||
+      inv.name.toLowerCase().includes(title) ||
+      title.includes(inv.name.toLowerCase())
+    );
+
+    if (match) {
+      results.push(`✅ ${item.title} (×${qty}) — in stock (${match.name})`);
+    } else {
+      results.push(`🔴 ${item.title} (×${qty}) — NOT in inventory, needs manufacturing`);
+    }
+  }
+
+  const orderNum = order.order_number;
+  const title = `New Order #${orderNum}`;
+  const body = results.join("\n");
+
+  await sendPushToAll(title, body, "/orders");
+  console.log(`[Shopify] Order #${orderNum} inventory check:\n${body}`);
+}
+
