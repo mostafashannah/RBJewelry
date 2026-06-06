@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyMetaSignature, verifyWebhookToken } from "@/lib/meta/webhook-verify";
 import { processInboundMessage } from "@/lib/ai/agent";
+import { sendPushNotification } from "@/lib/push";
 import { Platform, Direction } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
@@ -123,6 +124,7 @@ async function handleDM(value: Record<string, unknown>) {
   });
 
   processInboundMessage(conversation.id, message.id).catch(console.error);
+  sendPushNotification("New Instagram DM", body ?? "Photo message", "/inbox").catch(() => {});
 }
 
 async function handleComment(value: Record<string, unknown>) {
@@ -155,4 +157,5 @@ async function handleComment(value: Record<string, unknown>) {
   });
 
   processInboundMessage(conversation.id, message.id).catch(console.error);
+  sendPushNotification("New Instagram Comment", text, "/inbox").catch(() => {});
 }

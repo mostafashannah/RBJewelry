@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyMetaSignature, verifyWebhookToken } from "@/lib/meta/webhook-verify";
 import { processInboundMessage } from "@/lib/ai/agent";
+import { sendPushNotification } from "@/lib/push";
 import { Platform, Direction } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
@@ -84,6 +85,8 @@ export async function POST(req: NextRequest) {
         });
 
         processInboundMessage(conversation.id, message.id).catch(console.error);
+        const displayName = contact?.profile?.name ?? msg.from;
+        sendPushNotification(`WhatsApp: ${displayName}`, body, "/inbox").catch(() => {});
       }
     }
   }

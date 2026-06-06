@@ -12,11 +12,11 @@ export async function POST(req: NextRequest) {
     // Push Shopify inventory → Google Sheets
     const { products } = await getProducts(250);
     const rows: (string | number)[][] = [
-      ["Product ID", "Title", "Handle", "Variant", "SKU", "Inventory", "Price (EGP)"],
+      ["Product ID", "Title", "Handle", "Variant", "SKU", "Inventory", "Price (EGP)", "Inventory Item ID"],
     ];
     for (const p of products) {
       for (const v of p.variants) {
-        rows.push([p.id, p.title, p.handle, v.title, v.sku, v.inventory_quantity, parseFloat(v.price)]);
+        rows.push([p.id, p.title, p.handle, v.title, v.sku, v.inventory_quantity, parseFloat(v.price), v.inventory_item_id]);
       }
     }
     await writeSheet(SHEETS_ID, "Stock!A1", rows);

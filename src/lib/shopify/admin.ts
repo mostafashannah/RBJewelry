@@ -372,14 +372,60 @@ export async function getLocations(): Promise<{ locations: { id: string; name: s
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function getInventoryLevels(_locationId: string) {
-  return { inventory_levels: [] as InventoryLevel[] };
+export async function getInventoryLevels(locationId: string) {
+  const locGid = locationId.startsWith("gid://") ? locationId : `gid://shopify/Location/${locationId}`;
+  const data = await shopifyGraphQL<{
+    location: {
+      inventoryLevels: {
+        edges: { node: { item: { id: string }; quantities: { quantity: number }[] } }[];
+      };
+    };
+  }>(`
+    query getInventoryLevels($locationId: ID!) {
+      location(id: $locationId) {
+        inventoryLevels(first: 250) {
+          edges {
+            node {
+              item { id }
+              quantities(names: ["available"]) { quantity }
+            }
+          }
+        }
+      }
+    }
+  `, { locationId: locGid });
+
+  const numericLocId = parseInt(locationId.replace("gid://shopify/Location/", ""));
+  const inventory_levels: InventoryLevel[] = data.location.inventoryLevels.edges.map(({ node }) => ({
+    inventory_item_id: parseInt(node.item.id.replace("gid://shopify/InventoryItem/", "")),
+    location_id: numericLocId,
+    available: node.quantities[0]?.quantity ?? 0,
+  }));
+
+  return { inventory_levels };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function setInventoryLevel(_inventoryItemId: string, _locationId: string, _available: number) {
-  // GraphQL mutation for inventory — kept as stub, implement when needed
+export async function setInventoryLevel(inventoryItemId: string, locationId: string, available: number) {
+  const itemGid = inventoryItemId.startsWith("gid://")
+    ? inventoryItemId
+    : `gid://shopify/InventoryItem/${inventoryItemId}`;
+  const locGid = locationId.startsWith("gid://")
+    ? locationId
+    : `gid://shopify/Location/${locationId}`;
+
+  await shopifyGraphQL<{ inventorySetQuantities: { userErrors: { field: string[]; message: string }[] } }>(`
+    mutation setInventory($input: InventorySetQuantitiesInput!) {
+      inventorySetQuantities(input: $input) {
+        userErrors { field message }
+      }
+    }
+  `, {
+    input: {
+      name: "available",
+      reason: "correction",
+      quantities: [{ inventoryItemId: itemGid, locationId: locGid, quantity: available }],
+    },
+  });
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
