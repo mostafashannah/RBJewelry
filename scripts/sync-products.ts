@@ -29,10 +29,10 @@ async function main() {
     body: JSON.stringify({ query: `{
       products(first: 100, query: "status:active") {
         edges { node {
-          id handle title descriptionHtml tags
+          id handle title descriptionHtml tags productType
           images(first: 1) { edges { node { url altText } } }
           variants(first: 10) {
-            edges { node { price compareAtPrice availableForSale } }
+            edges { node { id sku price compareAtPrice availableForSale inventoryQuantity } }
           }
         }}
       }
@@ -45,10 +45,11 @@ async function main() {
 
   let upserted = 0;
   for (const { node: p } of products) {
-    const variants = (p.variants as { edges: { node: { price: string; compareAtPrice: string | null; availableForSale: boolean } }[] }).edges;
+    const variants = (p.variants as { edges: { node: { id: string; sku: string; price: string; compareAtPrice: string | null; availableForSale: boolean; inventoryQuantity: number } }[] }).edges;
     const images = (p.images as { edges: { node: { url: string; altText: string | null } }[] }).edges;
     const prices = variants.map(v => parseFloat(v.node.price)).filter(n => !isNaN(n));
-    const available = variants.some(v => v.node.availableForSale);
+    const totalInventory = variants.reduce((s, v) => s + (v.node.inventoryQuantity ?? 0), 0);
+    const available = totalInventory > 0 || variants.some(v => v.node.availableForSale);
 
     await db.shopifyProductCache.upsert({
       where: { handle: p.handle as string },

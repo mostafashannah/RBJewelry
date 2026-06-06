@@ -1,7 +1,7 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { format } from "date-fns";
-import { RefreshCw, Package } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 interface Order {
   id: string;
@@ -30,6 +30,8 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
+  const [pullY, setPullY] = useState(0);
+  const startYRef = useRef(0);
 
   const load = async () => {
     setLoading(true);
@@ -55,7 +57,17 @@ export default function OrdersPage() {
   const revenue = paid.reduce((s, o) => s + o.totalPrice, 0);
 
   return (
-    <div className="p-4 md:p-8">
+    <div className="p-4 md:p-8"
+      onTouchStart={(e) => { if (window.scrollY === 0) startYRef.current = e.touches[0].clientY; }}
+      onTouchMove={(e) => { const dy = e.touches[0].clientY - startYRef.current; if (dy > 0 && window.scrollY === 0) setPullY(Math.min(dy, 80)); }}
+      onTouchEnd={async () => { if (pullY > 50) { setPullY(0); await sync(); } else setPullY(0); }}
+    >
+      {pullY > 10 && (
+        <div className="flex justify-center mb-2" style={{ marginTop: pullY - 40 }}>
+          <RefreshCw size={16} className={`text-zinc-400 ${pullY > 50 ? "animate-spin" : ""}`}
+            style={{ transform: `rotate(${pullY * 4}deg)` }} />
+        </div>
+      )}
       {/* Header */}
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -64,24 +76,11 @@ export default function OrdersPage() {
             {orders.length} orders · {paid.length} paid · {revenue.toLocaleString()} EGP revenue
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <button onClick={sync} disabled={syncing}
-            className="flex items-center gap-1.5 text-xs px-3 py-2 border border-zinc-200 rounded-xl hover:bg-zinc-50 text-zinc-600 disabled:opacity-40 transition-colors">
-            <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
-            {syncing ? "Syncing…" : "Sync Orders"}
-          </button>
-          <button onClick={async () => {
-            setSyncing(true); setSyncMsg("");
-            const res = await fetch("/api/shopify/sync", { method: "POST" });
-            const d = await res.json();
-            setSyncMsg(d.ok ? "Products synced" : (d.error ?? "Failed"));
-            setSyncing(false);
-          }} disabled={syncing}
-            className="flex items-center gap-1.5 text-xs px-3 py-2 border border-zinc-200 rounded-xl hover:bg-zinc-50 text-zinc-600 disabled:opacity-40 transition-colors">
-            <Package size={13} />
-            Sync Products
-          </button>
-        </div>
+        <button onClick={sync} disabled={syncing}
+          className="flex items-center gap-1.5 text-xs px-3 py-2 border border-zinc-200 rounded-xl hover:bg-zinc-50 text-zinc-600 disabled:opacity-40 transition-colors">
+          <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
+          {syncing ? "Syncing…" : "Sync Orders"}
+        </button>
       </div>
 
       {syncMsg && (

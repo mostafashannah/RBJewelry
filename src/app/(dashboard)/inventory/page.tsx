@@ -65,6 +65,8 @@ export default function InventoryPage() {
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [pullY, setPullY] = useState(0);
+  const startYRef = useRef<number>(0);
 
   const load = useCallback(async (q?: string) => {
     setLoading(true);
@@ -210,7 +212,17 @@ export default function InventoryPage() {
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 max-w-5xl mx-auto"
+      onTouchStart={(e) => { if (window.scrollY === 0) startYRef.current = e.touches[0].clientY; }}
+      onTouchMove={(e) => { const dy = e.touches[0].clientY - startYRef.current; if (dy > 0 && window.scrollY === 0) setPullY(Math.min(dy, 80)); }}
+      onTouchEnd={async () => { if (pullY > 50) { setPullY(0); await load(); } else setPullY(0); }}
+    >
+      {pullY > 10 && (
+        <div className="flex justify-center mb-2" style={{ marginTop: pullY - 40 }}>
+          <RefreshCw size={16} className={`text-zinc-400 ${pullY > 50 ? "animate-spin" : ""}`}
+            style={{ transform: `rotate(${pullY * 4}deg)` }} />
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-5 gap-3">
         <h1 className="text-lg font-semibold text-zinc-900">Inventory</h1>
@@ -531,11 +543,23 @@ export default function InventoryPage() {
 
               {/* Name + SKU */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2 sm:col-span-1">
+                <div className="col-span-2 sm:col-span-1 relative">
                   <label className="text-xs font-medium text-zinc-600 block mb-1">Item Name *</label>
-                  <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="e.g. Silver Ring with Zircon"
+                  <input type="text" value={form.name}
+                    onChange={async (e) => {
+                      const name = e.target.value;
+                      setForm((f) => ({ ...f, name }));
+                      if (name.length > 2) {
+                        const res = await fetch(`/api/shopify/product-price?name=${encodeURIComponent(name)}`);
+                        const data = await res.json();
+                        if (data.products?.[0] && !form.priceEGP) {
+                          setForm((f) => ({ ...f, priceEGP: String(data.products[0].priceMin) }));
+                        }
+                      }
+                    }}
+                    placeholder="e.g. Wave Ring"
                     className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
+                  <p className="text-[10px] text-zinc-400 mt-1">Shopify price auto-fills when name matches</p>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-zinc-600 block mb-1">
