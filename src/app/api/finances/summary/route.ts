@@ -11,9 +11,8 @@ export async function GET() {
       db.shareholderInvestment.findMany().catch(() => []),
     ]);
 
-    // Revenue: paid orders only — Shopify stores status lowercase ("paid")
-    const PAID_STATUSES = ["paid", "partially_paid", "partially_refunded"];
-    const paidOrders = orders.filter((o) => PAID_STATUSES.includes(o.status.toLowerCase()));
+    // Revenue: paid orders — handle both webhook format ("paid") and sync format ("PAID / FULFILLED")
+    const paidOrders = orders.filter((o) => o.status.toLowerCase().includes("paid"));
     const revenue = paidOrders.reduce((s, o) => s + o.totalPrice, 0);
 
     // Expenses
@@ -34,6 +33,7 @@ export async function GET() {
       revenue,
       totalExpenses,
       profit: revenue - totalExpenses,
+      balance: totalInvested + revenue - totalExpenses,
       stockValue,
       stockItemCount: stockItems.length,
       paidOrderCount: paidOrders.length,

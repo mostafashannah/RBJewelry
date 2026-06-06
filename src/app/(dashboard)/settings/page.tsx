@@ -428,9 +428,8 @@ export default function SettingsPage() {
             <p className="text-xs font-medium text-zinc-500 mb-2">App Logo & Icon</p>
             <div className="flex items-start gap-4">
               <div className="text-center">
-                <div className="w-16 h-16 bg-zinc-900 rounded-2xl flex items-center justify-center mb-1">
-                  <span className="text-xs font-bold tracking-widest uppercase text-[#c9a96e]">RB</span>
-                </div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/icon-192.png" alt="App icon" className="w-16 h-16 rounded-2xl object-cover mb-1" />
                 <p className="text-[10px] text-zinc-400">App icon</p>
               </div>
               <div className="flex-1 text-xs text-zinc-400 leading-relaxed">
