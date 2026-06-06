@@ -52,7 +52,20 @@ export default function DashboardPage() {
     fetch("/api/finances/summary")
       .then((r) => r.json())
       .then((data) => {
-        if (data && typeof data.revenue === "number") setSummary(data);
+        if (data && !data.error) setSummary({
+          revenue: data.revenue ?? 0,
+          grossRevenue: data.grossRevenue ?? 0,
+          shippingCost: data.shippingCost ?? 0,
+          totalExpenses: data.totalExpenses ?? 0,
+          profit: data.profit ?? 0,
+          balance: data.balance ?? 0,
+          stockValue: data.stockValue ?? 0,
+          stockItemCount: data.stockItemCount ?? 0,
+          paidOrderCount: data.paidOrderCount ?? 0,
+          totalInvested: data.totalInvested ?? 0,
+          investmentCount: data.investmentCount ?? 0,
+          byCategory: data.byCategory ?? {},
+        });
       })
       .catch(() => null);
   }, []);
@@ -101,12 +114,17 @@ export default function DashboardPage() {
         <div className="space-y-3">
           <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Financials</p>
           {/* Balance */}
-          <div className={`rounded-xl p-4 border ${summary.balance >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
-            <p className="text-xs text-zinc-500 mb-1">Balance = Invested + Net Revenue − Expenses</p>
-            <p className={`text-3xl font-bold ${summary.balance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-              {summary.balance >= 0 ? "+" : ""}{summary.balance.toLocaleString()} EGP
-            </p>
-          </div>
+          {(() => {
+            const bal = summary.balance ?? 0;
+            return (
+              <div className={`rounded-xl p-4 border ${bal >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                <p className="text-xs text-zinc-500 mb-1">Balance = Invested + Net Revenue − Expenses</p>
+                <p className={`text-3xl font-bold ${bal >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  {bal >= 0 ? "+" : ""}{bal.toLocaleString()} EGP
+                </p>
+              </div>
+            );
+          })()}
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="bg-white border border-zinc-100 rounded-xl p-4">
@@ -114,15 +132,15 @@ export default function DashboardPage() {
                 <ShoppingBag size={13} className="text-emerald-500" />
                 <p className="text-xs text-zinc-400">Net Revenue</p>
               </div>
-              <p className="text-xl font-semibold text-emerald-600">{summary.revenue.toLocaleString()}</p>
-              <p className="text-[10px] text-zinc-400 mt-0.5">{summary.paidOrderCount} orders · -{summary.shippingCost?.toLocaleString()} ship</p>
+              <p className="text-xl font-semibold text-emerald-600">{(summary.revenue ?? 0).toLocaleString()}</p>
+              <p className="text-[10px] text-zinc-400 mt-0.5">{summary.paidOrderCount ?? 0} orders · -{(summary.shippingCost ?? 0).toLocaleString()} ship</p>
             </div>
             <div className="bg-white border border-zinc-100 rounded-xl p-4">
               <div className="flex items-center gap-1.5 mb-2">
                 <TrendingDown size={13} className="text-red-400" />
                 <p className="text-xs text-zinc-400">Expenses</p>
               </div>
-              <p className="text-xl font-semibold text-red-500">{summary.totalExpenses.toLocaleString()}</p>
+              <p className="text-xl font-semibold text-red-500">{(summary.totalExpenses ?? 0).toLocaleString()}</p>
               <p className="text-[10px] text-zinc-400 mt-0.5">EGP total</p>
             </div>
             <div className="bg-white border border-zinc-100 rounded-xl p-4">
@@ -130,7 +148,7 @@ export default function DashboardPage() {
                 <Users size={13} className="text-purple-500" />
                 <p className="text-xs text-zinc-400">Invested</p>
               </div>
-              <p className="text-xl font-semibold text-purple-600">{summary.totalInvested.toLocaleString()}</p>
+              <p className="text-xl font-semibold text-purple-600">{(summary.totalInvested ?? 0).toLocaleString()}</p>
               <p className="text-[10px] text-zinc-400 mt-0.5">EGP by shareholders</p>
             </div>
             <div className="bg-white border border-zinc-100 rounded-xl p-4">
@@ -138,8 +156,8 @@ export default function DashboardPage() {
                 <Package size={13} className="text-amber-500" />
                 <p className="text-xs text-zinc-400">Stock Value</p>
               </div>
-              <p className="text-xl font-semibold text-amber-600">{summary.stockValue.toLocaleString()}</p>
-              <p className="text-[10px] text-zinc-400 mt-0.5">{summary.stockItemCount} items · EGP cost</p>
+              <p className="text-xl font-semibold text-amber-600">{(summary.stockValue ?? 0).toLocaleString()}</p>
+              <p className="text-[10px] text-zinc-400 mt-0.5">{summary.stockItemCount ?? 0} items · EGP cost</p>
             </div>
           </div>
         </div>
