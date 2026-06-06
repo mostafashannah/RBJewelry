@@ -400,6 +400,50 @@ export default function SettingsPage() {
         <p className="text-sm text-zinc-500 mt-1">Configure AI agent and integrations</p>
       </div>
 
+      {/* Branding */}
+      <div className="bg-white border border-zinc-100 rounded-xl p-6">
+        <h2 className="text-sm font-semibold text-zinc-900 mb-1">Branding</h2>
+        <p className="text-xs text-zinc-500 mb-5">App colors, logo, and icon used throughout the dashboard</p>
+        <div className="space-y-4">
+          <div>
+            <p className="text-xs font-medium text-zinc-500 mb-2">Brand Colors</p>
+            <div className="flex flex-wrap gap-3">
+              {[
+                { label: "Gold (primary)", hex: "#c9a96e", bg: "bg-[#c9a96e]" },
+                { label: "Dark (text)", hex: "#18181b", bg: "bg-zinc-900" },
+                { label: "Surface (background)", hex: "#fafafa", bg: "bg-[#fafafa] border border-zinc-200" },
+                { label: "White (cards)", hex: "#ffffff", bg: "bg-white border border-zinc-200" },
+              ].map((color) => (
+                <div key={color.hex} className="flex items-center gap-2.5">
+                  <div className={`w-8 h-8 rounded-lg ${color.bg} shrink-0`} />
+                  <div>
+                    <p className="text-xs font-medium text-zinc-700">{color.label}</p>
+                    <p className="text-[10px] text-zinc-400 font-mono">{color.hex}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="border-t border-zinc-50 pt-4">
+            <p className="text-xs font-medium text-zinc-500 mb-2">App Logo & Icon</p>
+            <div className="flex items-start gap-4">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-zinc-900 rounded-2xl flex items-center justify-center mb-1">
+                  <span className="text-xs font-bold tracking-widest uppercase text-[#c9a96e]">RB</span>
+                </div>
+                <p className="text-[10px] text-zinc-400">App icon</p>
+              </div>
+              <div className="flex-1 text-xs text-zinc-400 leading-relaxed">
+                <p className="text-zinc-600 font-medium mb-1">RB Jewelry</p>
+                <p>Logo: white/dark background with gold <span className="font-semibold text-[#c9a96e]">RB Jewelry</span> wordmark</p>
+                <p className="mt-1">Icon: dark square with gold RB monogram</p>
+                <p className="mt-2 text-zinc-400">To update logo/icon files, replace <code className="bg-zinc-50 px-1 rounded">public/icon-*.png</code> and <code className="bg-zinc-50 px-1 rounded">public/manifest.json</code></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Team */}
       <TeamSection />
 

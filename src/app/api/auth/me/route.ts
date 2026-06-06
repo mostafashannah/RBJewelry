@@ -13,21 +13,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ id: "admin", name: "Admin", role: "ADMIN" });
   }
 
-  // Demo
-  if (cookie === "demo-access") {
-    return NextResponse.json({ id: "demo", name: "Demo", role: "LIMITED" });
-  }
-
-  // JWT (staff users)
+  // JWT (Mostafa + staff)
   const session = await verifySession(cookie).catch(() => null);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (session.id === "admin") {
-    return NextResponse.json({ id: "admin", name: "Admin", role: "ADMIN" });
-  }
+  const user = await db.user.findUnique({ where: { id: session.id } }).catch(() => null);
+  if (user) return NextResponse.json({ id: user.id, name: user.name, email: user.email, role: user.role });
 
-  const user = await db.user.findUnique({ where: { id: session.id } });
-  if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
-
-  return NextResponse.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+  // Fallback for legacy admin JWT
+  return NextResponse.json({ id: session.id, name: "Admin", role: session.role });
 }

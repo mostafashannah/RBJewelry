@@ -1,12 +1,15 @@
 "use client";
 import { useState, useEffect } from "react";
-import { TrendingUp, TrendingDown, Package, ShoppingBag, Users, Send, Loader2, Bell, BellOff } from "lucide-react";
+import { TrendingDown, Package, ShoppingBag, Users, Send, Loader2, Bell, BellOff } from "lucide-react";
 import Link from "next/link";
 
 interface Summary {
   revenue: number;
+  grossRevenue: number;
+  shippingCost: number;
   totalExpenses: number;
   profit: number;
+  balance: number;
   stockValue: number;
   stockItemCount: number;
   paidOrderCount: number;
@@ -97,14 +100,22 @@ export default function DashboardPage() {
       {summary && (
         <div className="space-y-3">
           <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Financials</p>
+          {/* Balance */}
+          <div className={`rounded-xl p-4 border ${summary.balance >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+            <p className="text-xs text-zinc-500 mb-1">Balance = Invested + Net Revenue − Expenses</p>
+            <p className={`text-3xl font-bold ${summary.balance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+              {summary.balance >= 0 ? "+" : ""}{summary.balance.toLocaleString()} EGP
+            </p>
+          </div>
+
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="bg-white border border-zinc-100 rounded-xl p-4">
               <div className="flex items-center gap-1.5 mb-2">
                 <ShoppingBag size={13} className="text-emerald-500" />
-                <p className="text-xs text-zinc-400">Revenue</p>
+                <p className="text-xs text-zinc-400">Net Revenue</p>
               </div>
               <p className="text-xl font-semibold text-emerald-600">{summary.revenue.toLocaleString()}</p>
-              <p className="text-[10px] text-zinc-400 mt-0.5">{summary.paidOrderCount} paid orders · EGP</p>
+              <p className="text-[10px] text-zinc-400 mt-0.5">{summary.paidOrderCount} orders · -{summary.shippingCost?.toLocaleString()} ship</p>
             </div>
             <div className="bg-white border border-zinc-100 rounded-xl p-4">
               <div className="flex items-center gap-1.5 mb-2">
@@ -116,13 +127,11 @@ export default function DashboardPage() {
             </div>
             <div className="bg-white border border-zinc-100 rounded-xl p-4">
               <div className="flex items-center gap-1.5 mb-2">
-                <TrendingUp size={13} className={summary.profit >= 0 ? "text-emerald-500" : "text-red-400"} />
-                <p className="text-xs text-zinc-400">Net P&L</p>
+                <Users size={13} className="text-purple-500" />
+                <p className="text-xs text-zinc-400">Invested</p>
               </div>
-              <p className={`text-xl font-semibold ${summary.profit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                {summary.profit >= 0 ? "+" : ""}{summary.profit.toLocaleString()}
-              </p>
-              <p className="text-[10px] text-zinc-400 mt-0.5">EGP</p>
+              <p className="text-xl font-semibold text-purple-600">{summary.totalInvested.toLocaleString()}</p>
+              <p className="text-[10px] text-zinc-400 mt-0.5">EGP by shareholders</p>
             </div>
             <div className="bg-white border border-zinc-100 rounded-xl p-4">
               <div className="flex items-center gap-1.5 mb-2">
@@ -133,28 +142,21 @@ export default function DashboardPage() {
               <p className="text-[10px] text-zinc-400 mt-0.5">{summary.stockItemCount} items · EGP cost</p>
             </div>
           </div>
-
-          {summary.totalInvested > 0 && (
-            <div className="bg-white border border-zinc-100 rounded-xl p-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users size={14} className="text-purple-500" />
-                <span className="text-sm text-zinc-700">Total Invested by Shareholders</span>
-              </div>
-              <span className="text-sm font-semibold text-purple-600">{summary.totalInvested.toLocaleString()} EGP</span>
-            </div>
-          )}
         </div>
       )}
 
       {/* AI Assistant */}
       <div className="bg-white border border-zinc-100 rounded-xl p-4">
-        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-3">Ask AI</p>
+        <div className="flex items-start justify-between mb-3">
+          <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Ask AI</p>
+          <span className="text-[10px] text-zinc-400 bg-zinc-50 px-2 py-0.5 rounded-full">Orders · Products · Inventory · Finances</span>
+        </div>
         <div className="flex gap-2">
           <input
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") ask(); }}
-            placeholder="Ask anything… e.g. What's my best selling category? How much did I spend on ads?"
+            placeholder="e.g. Best selling product? Total expenses this month? Stock value?"
             className="flex-1 text-sm border border-zinc-200 rounded-xl px-4 py-2.5 focus:outline-none focus:border-zinc-400 min-w-0"
           />
           <button

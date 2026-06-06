@@ -41,6 +41,7 @@ export default function FinancesPage() {
   const [showAddInv, setShowAddInv] = useState(false);
   const [invForm, setInvForm] = useState({ name: "", amount: "", date: format(new Date(), "yyyy-MM-dd"), notes: "" });
 
+  const [shareholderFilter, setShareholderFilter] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState("");
 
@@ -188,9 +189,20 @@ export default function FinancesPage() {
 
       {/* Shareholder Investments */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Shareholder Investments</p>
           <p className="text-sm font-semibold text-purple-600">{totalInvested.toLocaleString()} EGP total</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            value={shareholderFilter}
+            onChange={(e) => setShareholderFilter(e.target.value)}
+            placeholder="Filter by shareholder name…"
+            className="flex-1 border border-zinc-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-zinc-400"
+          />
+          {shareholderFilter && (
+            <button onClick={() => setShareholderFilter("")} className="text-xs text-zinc-400 hover:text-zinc-600 px-2 py-1.5">Clear</button>
+          )}
         </div>
         {investments.length === 0 ? (
           <div className={`${cardCls} text-center py-6 text-sm text-zinc-400`}>No investments yet</div>
@@ -205,7 +217,9 @@ export default function FinancesPage() {
                 </tr>
               </thead>
               <tbody>
-                {investments.map((inv) => (
+                {investments
+                  .filter((inv) => !shareholderFilter || inv.name.toLowerCase().includes(shareholderFilter.toLowerCase()))
+                  .map((inv) => (
                   <tr key={inv.id} className="border-b border-zinc-50 hover:bg-zinc-50">
                     <td className="px-4 py-3 font-medium text-zinc-900">{inv.name}</td>
                     <td className="px-4 py-3 font-semibold text-purple-600">{inv.amount.toLocaleString()} {inv.currency}</td>

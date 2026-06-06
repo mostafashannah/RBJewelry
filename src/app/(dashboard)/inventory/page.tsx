@@ -65,8 +65,8 @@ export default function InventoryPage() {
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [pullY, setPullY] = useState(0);
-  const startYRef = useRef<number>(0);
+  const [shopifySuggestions, setShopifySuggestions] = useState<{ id: string; title: string; priceMin: number }[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const load = useCallback(async (q?: string) => {
     setLoading(true);
@@ -143,7 +143,8 @@ export default function InventoryPage() {
   };
 
   const openAdd = () => {
-    setEditItem(null); setForm({ ...emptyForm }); setPhotoUrl(null); setAiHints([]); setShowAdd(true);
+    setEditItem(null); setForm({ ...emptyForm }); setPhotoUrl(null); setAiHints([]);
+    setShopifySuggestions([]); setShowSuggestions(false); setShowAdd(true);
   };
 
   const openEdit = (item: Item) => {
@@ -156,7 +157,7 @@ export default function InventoryPage() {
       priceEGP: item.priceEGP != null ? String(item.priceEGP) : "",
       orderNo: item.orderNo ?? "", notes: item.notes ?? "",
     });
-    setPhotoUrl(item.photoUrl); setAiHints([]); setShowAdd(true);
+    setPhotoUrl(item.photoUrl); setAiHints([]); setShopifySuggestions([]); setShowSuggestions(false); setShowAdd(true);
   };
 
   const save = async () => {
@@ -211,29 +212,8 @@ export default function InventoryPage() {
     load(); loadSilver();
   };
 
-  const containerRef = useRef<HTMLDivElement>(null);
-
   return (
-    <div ref={containerRef} className="p-4 md:p-6 max-w-5xl mx-auto"
-      onTouchStart={(e) => {
-        const parent = containerRef.current?.closest("main");
-        if ((parent?.scrollTop ?? 0) === 0) startYRef.current = e.touches[0].clientY;
-      }}
-      onTouchMove={(e) => {
-        const parent = containerRef.current?.closest("main");
-        if ((parent?.scrollTop ?? 0) === 0) {
-          const dy = e.touches[0].clientY - startYRef.current;
-          if (dy > 0) setPullY(Math.min(dy, 80));
-        }
-      }}
-      onTouchEnd={async () => { if (pullY > 50) { setPullY(0); await load(); } else setPullY(0); }}
-    >
-      {pullY > 10 && (
-        <div className="flex justify-center mb-2" style={{ marginTop: pullY - 40 }}>
-          <RefreshCw size={16} className={`text-zinc-400 ${pullY > 50 ? "animate-spin" : ""}`}
-            style={{ transform: `rotate(${pullY * 4}deg)` }} />
-        </div>
-      )}
+    <div className="p-4 md:p-6 max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-5 gap-3">
         <h1 className="text-lg font-semibold text-zinc-900">Inventory</h1>
@@ -557,20 +537,50 @@ export default function InventoryPage() {
                 <div className="col-span-2 sm:col-span-1 relative">
                   <label className="text-xs font-medium text-zinc-600 block mb-1">Item Name *</label>
                   <input type="text" value={form.name}
+                    onFocus={() => { if (shopifySuggestions.length > 0) setShowSuggestions(true); }}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                     onChange={async (e) => {
                       const name = e.target.value;
                       setForm((f) => ({ ...f, name }));
-                      if (name.length > 2) {
+                      if (name.length > 1) {
                         const res = await fetch(`/api/shopify/product-price?name=${encodeURIComponent(name)}`);
                         const data = await res.json();
-                        if (data.products?.[0]) {
-                          setForm((f) => ({ ...f, priceEGP: String(data.products[0].priceMin) }));
+                        if (data.products?.length > 0) {
+                          setShopifySuggestions(data.products);
+                          setShowSuggestions(true);
+                          if (data.products.length === 1) {
+                            setForm((f) => ({ ...f, priceEGP: String(data.products[0].priceMin) }));
+                          }
+                        } else {
+                          setShopifySuggestions([]);
+                          setShowSuggestions(false);
                         }
+                      } else {
+                        setShopifySuggestions([]);
+                        setShowSuggestions(false);
                       }
                     }}
                     placeholder="e.g. Wave Ring"
                     className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
-                  <p className="text-[10px] text-zinc-400 mt-1">Shopify price auto-fills when name matches</p>
+                  {showSuggestions && shopifySuggestions.length > 0 && (
+                    <div className="absolute z-10 left-0 right-0 top-full mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg overflow-hidden">
+                      {shopifySuggestions.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onMouseDown={() => {
+                            setForm((f) => ({ ...f, name: p.title, priceEGP: String(p.priceMin) }));
+                            setShowSuggestions(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-50 flex items-center justify-between"
+                        >
+                          <span className="text-zinc-900 font-medium">{p.title}</span>
+                          <span className="text-xs text-emerald-600">{p.priceMin.toLocaleString()} EGP</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-zinc-400 mt-1">Shopify name & price auto-fill when name matches</p>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-zinc-600 block mb-1">

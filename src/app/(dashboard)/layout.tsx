@@ -1,10 +1,10 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   LayoutDashboard, MessageSquare, Package, ShoppingBag, BarChart2,
-  Megaphone, Wallet, Settings, ClipboardList, Boxes, LogOut, Menu, X,
+  Megaphone, Wallet, Settings, ClipboardList, Boxes, LogOut, Menu, X, RefreshCw,
 } from "lucide-react";
 
 const ALL_NAV = [
@@ -26,6 +26,41 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [mobileOpen, setMobileOpen] = useState(false);
   const [role, setRole] = useState<"ADMIN" | "LIMITED" | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+
+  // Pull-to-refresh
+  const mainRef = useRef<HTMLElement>(null);
+  const pullStartY = useRef<number | null>(null);
+  const [pullY, setPullY] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if ((mainRef.current?.scrollTop ?? 0) === 0) {
+      pullStartY.current = e.touches[0].clientY;
+    } else {
+      pullStartY.current = null;
+    }
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (pullStartY.current === null) return;
+    if ((mainRef.current?.scrollTop ?? 0) > 0) { pullStartY.current = null; setPullY(0); return; }
+    const dy = e.touches[0].clientY - pullStartY.current;
+    if (dy > 0) setPullY(Math.min(dy, 90));
+    else { pullStartY.current = null; setPullY(0); }
+  }, []);
+
+  const handleTouchEnd = useCallback(async () => {
+    if (pullY > 55) {
+      setRefreshing(true);
+      setPullY(0);
+      pullStartY.current = null;
+      router.refresh();
+      setTimeout(() => setRefreshing(false), 1000);
+    } else {
+      setPullY(0);
+      pullStartY.current = null;
+    }
+  }, [pullY, router]);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -151,7 +186,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </header>
 
         {/* Page content — extra bottom padding for iPhone home bar */}
-        <main className="flex-1 overflow-auto pb-20 md:pb-0">{children}</main>
+        <main
+          ref={mainRef}
+          className="flex-1 overflow-auto pb-20 md:pb-0 relative"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          {/* Pull-to-refresh indicator */}
+          {(pullY > 10 || refreshing) && (
+            <div
+              className="absolute top-0 left-0 right-0 flex justify-center items-center z-10 pointer-events-none transition-all"
+              style={{ height: refreshing ? 44 : Math.max(pullY - 10, 0), overflow: "hidden" }}
+            >
+              <RefreshCw
+                size={18}
+                className={`text-zinc-400 ${refreshing || pullY > 55 ? "animate-spin" : ""}`}
+                style={{ transform: refreshing ? undefined : `rotate(${pullY * 3}deg)` }}
+              />
+            </div>
+          )}
+          <div style={{ paddingTop: pullY > 10 && !refreshing ? Math.max(pullY - 10, 0) : refreshing ? 44 : 0 }}>
+            {children}
+          </div>
+        </main>
 
         {/* Mobile bottom nav — sits above iPhone home indicator */}
         {bottomNav.length > 0 && (

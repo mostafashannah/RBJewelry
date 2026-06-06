@@ -20,8 +20,10 @@ const LIMITED_ALLOWED = [
   "/api/finances",
   "/api/shopify/orders",
   "/api/shopify/products",
+  "/api/shopify/product-price",
   "/api/auth",
   "/api/push",
+  "/api/ai",
   "/_next",
   "/favicon",
 ];
@@ -54,18 +56,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Demo — direct cookie value, LIMITED access
-  if (sessionCookie === "demo-access") {
-    const allowed = LIMITED_ALLOWED.some((p) => pathname.startsWith(p));
-    if (!allowed) {
-      const inventoryUrl = req.nextUrl.clone();
-      inventoryUrl.pathname = "/inventory";
-      return NextResponse.redirect(inventoryUrl);
-    }
-    return NextResponse.next();
-  }
-
-  // JWT session (staff users)
+  // JWT session (Mostafa + other staff users with email login)
   const session = await verifySession(sessionCookie).catch(() => null);
   if (!session) {
     const loginUrl = req.nextUrl.clone();
