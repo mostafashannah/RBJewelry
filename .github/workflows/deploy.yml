@@ -18,7 +18,7 @@ jobs:
           node-version: '20'
 
       - name: Install hostinger-api-mcp
-        run: npm install -g hostinger-api-mcp@0.1.28
+        run: npm install -g hostinger-api-mcp@0.2.5
 
       - name: Write .env.local from secrets
         run: |
