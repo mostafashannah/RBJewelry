@@ -1,4 +1,4 @@
-const CACHE = "rb-jewelry-v1";
+const CACHE = "rb-jewelry-v2";
 
 self.addEventListener("install", (e) => {
   e.waitUntil(self.skipWaiting());
