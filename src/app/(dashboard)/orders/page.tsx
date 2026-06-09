@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { format } from "date-fns";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, PackageSearch, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 
 interface Order {
   id: string;
@@ -17,6 +17,20 @@ interface Order {
   lineItemsJson: { customerName?: string; items?: { title: string; quantity: number }[] };
 }
 
+interface AvailResult {
+  title: string;
+  quantity: number;
+  found: boolean;
+  inStock: number;
+  reserved: number;
+  sold: number;
+}
+
+interface AvailState {
+  loading: boolean;
+  results?: AvailResult[];
+}
+
 const paymentColor: Record<string, string> = {
   PAID: "bg-green-50 text-green-700",
   PENDING: "bg-yellow-50 text-yellow-700",
@@ -25,11 +39,35 @@ const paymentColor: Record<string, string> = {
   REFUNDED: "bg-red-50 text-red-700",
 };
 
+function AvailBadge({ r }: { r: AvailResult }) {
+  if (!r.found) return (
+    <span className="flex items-center gap-1 text-[10px] text-red-600">
+      <XCircle size={10} /> Not in inventory
+    </span>
+  );
+  if (r.inStock >= r.quantity) return (
+    <span className="flex items-center gap-1 text-[10px] text-emerald-600">
+      <CheckCircle2 size={10} /> In stock ({r.inStock})
+    </span>
+  );
+  if (r.inStock > 0) return (
+    <span className="flex items-center gap-1 text-[10px] text-amber-600">
+      <AlertCircle size={10} /> Low stock ({r.inStock})
+    </span>
+  );
+  return (
+    <span className="flex items-center gap-1 text-[10px] text-zinc-500">
+      <AlertCircle size={10} /> Found but not in stock
+    </span>
+  );
+}
+
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
+  const [avail, setAvail] = useState<Record<string, AvailState>>({});
   const [pullY, setPullY] = useState(0);
   const startYRef = useRef(0);
 
@@ -51,6 +89,18 @@ export default function OrdersPage() {
     setSyncMsg(data.ok ? "Synced from Shopify" : (data.error ?? "Sync failed"));
     if (data.ok) await load();
     setSyncing(false);
+  };
+
+  const checkAvailability = async (orderId: string, items: { title: string; quantity: number }[]) => {
+    if (!items.length) return;
+    setAvail((prev) => ({ ...prev, [orderId]: { loading: true } }));
+    const res = await fetch("/api/inventory/check-availability", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    });
+    const data = await res.json();
+    setAvail((prev) => ({ ...prev, [orderId]: { loading: false, results: data.results ?? [] } }));
   };
 
   const paid = orders.filter(o => o.status.includes("PAID"));
@@ -104,7 +154,9 @@ export default function OrdersPage() {
               const payment = parts[0] ?? o.status;
               const fulfillment = parts[1] ?? "";
               const meta = o.lineItemsJson;
-              const items = meta?.items?.map(i => `${i.quantity}× ${i.title}`).join(", ") ?? "";
+              const items = meta?.items ?? [];
+              const itemsStr = items.map(i => `${i.quantity}× ${i.title}`).join(", ");
+              const av = avail[o.id];
               return (
                 <div key={o.id} className="bg-white border border-zinc-100 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-1.5">
@@ -112,7 +164,7 @@ export default function OrdersPage() {
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${paymentColor[payment] ?? "bg-zinc-100 text-zinc-500"}`}>{payment}</span>
                   </div>
                   <p className="text-sm font-medium text-zinc-700">{meta?.customerName ?? o.customerEmail ?? "—"}</p>
-                  {items && <p className="text-xs text-zinc-400 mt-0.5 truncate">{items}</p>}
+                  {itemsStr && <p className="text-xs text-zinc-400 mt-0.5 truncate">{itemsStr}</p>}
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-sm font-semibold text-zinc-900">{o.totalPrice.toLocaleString()} {o.currency}</span>
                     <span className="text-xs text-zinc-400">{format(new Date(o.createdAt), "MMM d, yyyy")}</span>
@@ -128,6 +180,33 @@ export default function OrdersPage() {
                       {fulfillment}
                     </span>
                   )}
+                  {/* Check Availability */}
+                  {items.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-zinc-50">
+                      {!av ? (
+                        <button
+                          onClick={() => checkAvailability(o.id, items)}
+                          className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-800 border border-zinc-200 rounded-lg px-2.5 py-1.5 hover:bg-zinc-50 transition-colors">
+                          <PackageSearch size={12} /> Check Inventory
+                        </button>
+                      ) : av.loading ? (
+                        <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                          <RefreshCw size={11} className="animate-spin" /> Checking…
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          {av.results?.map((r, i) => (
+                            <div key={i} className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] text-zinc-600 truncate">{r.quantity}× {r.title}</span>
+                              <AvailBadge r={r} />
+                            </div>
+                          ))}
+                          <button onClick={() => setAvail((p) => { const n = { ...p }; delete n[o.id]; return n; })}
+                            className="text-[10px] text-zinc-400 underline mt-0.5">clear</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -138,7 +217,7 @@ export default function OrdersPage() {
             <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="border-b border-zinc-100 bg-zinc-50">
-                  {["Order", "Customer", "Items", "Total", "Payment", "Tracking", "Date"].map((h) => (
+                  {["Order", "Customer", "Items", "Total", "Payment", "Tracking", "Date", ""].map((h) => (
                     <th key={h} className="text-left text-xs text-zinc-400 font-medium px-4 py-3">{h}</th>
                   ))}
                 </tr>
@@ -148,7 +227,9 @@ export default function OrdersPage() {
                   const parts = o.status.split(" / ");
                   const payment = parts[0] ?? o.status;
                   const meta = o.lineItemsJson;
-                  const items = meta?.items?.map(i => `${i.quantity}× ${i.title}`).join(", ") ?? "";
+                  const items = meta?.items ?? [];
+                  const itemsStr = items.map(i => `${i.quantity}× ${i.title}`).join(", ");
+                  const av = avail[o.id];
                   return (
                     <tr key={o.id} className="border-b border-zinc-50 hover:bg-zinc-50 transition-colors">
                       <td className="px-4 py-3 font-medium text-zinc-900">#{o.orderNumber}</td>
@@ -157,7 +238,7 @@ export default function OrdersPage() {
                         {o.customerPhone && <p className="text-[10px] text-zinc-400">{o.customerPhone}</p>}
                       </td>
                       <td className="px-4 py-3 text-zinc-500 text-xs max-w-[180px]">
-                        <p className="truncate">{items}</p>
+                        <p className="truncate">{itemsStr}</p>
                       </td>
                       <td className="px-4 py-3 font-medium text-zinc-900 whitespace-nowrap">{o.totalPrice.toLocaleString()} {o.currency}</td>
                       <td className="px-4 py-3">
@@ -170,6 +251,27 @@ export default function OrdersPage() {
                         ) : <span className="text-zinc-300">—</span>}
                       </td>
                       <td className="px-4 py-3 text-zinc-400 text-xs whitespace-nowrap">{format(new Date(o.createdAt), "MMM d, yyyy")}</td>
+                      <td className="px-4 py-3 text-xs min-w-[160px]">
+                        {items.length === 0 ? null : !av ? (
+                          <button onClick={() => checkAvailability(o.id, items)}
+                            className="flex items-center gap-1 text-zinc-500 hover:text-zinc-800 border border-zinc-200 rounded-lg px-2 py-1 hover:bg-zinc-50 transition-colors whitespace-nowrap">
+                            <PackageSearch size={11} /> Check Stock
+                          </button>
+                        ) : av.loading ? (
+                          <span className="flex items-center gap-1 text-zinc-400"><RefreshCw size={10} className="animate-spin" /> Checking…</span>
+                        ) : (
+                          <div className="space-y-0.5">
+                            {av.results?.map((r, i) => (
+                              <div key={i} className="flex items-center gap-1.5">
+                                <AvailBadge r={r} />
+                                <span className="text-zinc-400 truncate max-w-[100px]">{r.title}</span>
+                              </div>
+                            ))}
+                            <button onClick={() => setAvail((p) => { const n = { ...p }; delete n[o.id]; return n; })}
+                              className="text-[10px] text-zinc-400 underline">clear</button>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
