@@ -372,6 +372,117 @@ export async function syncOrdersToCache() {
   return totalSynced;
 }
 
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+export type AnalyticsRange = "all" | "today" | "yesterday" | "week" | "month";
+
+function shopifyqlDateClause(range: AnalyticsRange): string {
+  switch (range) {
+    case "today":     return " SINCE today UNTIL today";
+    case "yesterday": return " SINCE -1d UNTIL -1d";
+    case "week":      return " SINCE -6d UNTIL today";
+    case "month":     return " SINCE -29d UNTIL today";
+    default:          return "";
+  }
+}
+
+function dbDateFilter(range: AnalyticsRange): { gte?: Date; lt?: Date } | undefined {
+  const now = new Date();
+  switch (range) {
+    case "today": {
+      const start = new Date(now); start.setHours(0, 0, 0, 0);
+      return { gte: start };
+    }
+    case "yesterday": {
+      const start = new Date(now); start.setDate(start.getDate() - 1); start.setHours(0, 0, 0, 0);
+      const end = new Date(now); end.setHours(0, 0, 0, 0);
+      return { gte: start, lt: end };
+    }
+    case "week": {
+      const start = new Date(now); start.setDate(start.getDate() - 6); start.setHours(0, 0, 0, 0);
+      return { gte: start };
+    }
+    case "month": {
+      const start = new Date(now); start.setDate(start.getDate() - 29); start.setHours(0, 0, 0, 0);
+      return { gte: start };
+    }
+    default: return undefined;
+  }
+}
+
+async function shopifyqlViews(range: AnalyticsRange): Promise<Map<string, number>> {
+  const dateClause = shopifyqlDateClause(range);
+  const q = `FROM sessions SHOW sessions GROUP BY landing_page_url ORDER BY sessions DESC LIMIT 250${dateClause}`;
+
+  try {
+    // Try the ShopifyQL GraphQL mutation (Shopify Admin API 2022-10+)
+    const data = await shopifyGraphQL<{
+      shopifyqlTableQuery?: {
+        tableData?: {
+          columnHeaders: { name: string }[];
+          rowData?: string[][];
+          unformattedData?: string[][];
+        };
+      };
+    }>(`
+      mutation ShopifyqlViews($q: String!) {
+        shopifyqlTableQuery(query: $q) {
+          tableData { columnHeaders { name } rowData unformattedData }
+        }
+      }
+    `, { q });
+
+    const td = data?.shopifyqlTableQuery?.tableData;
+    if (!td) return new Map();
+
+    const headers = td.columnHeaders.map((h) => h.name);
+    const urlIdx = headers.indexOf("landing_page_url");
+    const sessIdx = headers.indexOf("sessions");
+    const rows: string[][] = td.rowData ?? td.unformattedData ?? [];
+
+    const views = new Map<string, number>();
+    for (const row of rows) {
+      const url = String(row[urlIdx] ?? "");
+      const match = url.match(/\/products\/([^/?#]+)/);
+      if (match) {
+        const handle = match[1];
+        views.set(handle, (views.get(handle) ?? 0) + parseInt(row[sessIdx] ?? "0", 10));
+      }
+    }
+    return views;
+  } catch {
+    return new Map();
+  }
+}
+
+async function dbOrderCounts(range: AnalyticsRange): Promise<Map<string, number>> {
+  const dateFilter = dbDateFilter(range);
+  const orders = await db.shopifyOrderCache.findMany({
+    where: dateFilter ? { createdAt: dateFilter } : undefined,
+    select: { lineItemsJson: true },
+  });
+
+  const counts = new Map<string, number>();
+  for (const order of orders) {
+    const json = order.lineItemsJson as { items?: { title: string; quantity?: number }[] };
+    for (const item of json?.items ?? []) {
+      if (item.title) counts.set(item.title, (counts.get(item.title) ?? 0) + (item.quantity ?? 1));
+    }
+  }
+  return counts;
+}
+
+export async function getProductRawAnalytics(range: AnalyticsRange = "all"): Promise<{
+  orderCounts: Map<string, number>;   // keyed by product title
+  viewsByHandle: Map<string, number>; // keyed by product handle
+}> {
+  const [orderCounts, viewsByHandle] = await Promise.all([
+    dbOrderCounts(range),
+    shopifyqlViews(range),
+  ]);
+  return { orderCounts, viewsByHandle };
+}
+
 export async function getLocations(): Promise<{ locations: { id: string; name: string }[] }> {
   const data = await shopifyGraphQL<{
     locations: { edges: { node: { id: string; name: string } }[] };
