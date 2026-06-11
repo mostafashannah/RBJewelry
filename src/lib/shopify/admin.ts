@@ -491,6 +491,35 @@ async function dbOrderCounts(range: AnalyticsRange): Promise<Map<string, number>
   return counts;
 }
 
+export async function debugShopifyQL(queries: string[]): Promise<{ token: string; results: { q: string; httpStatus: number; response: unknown }[] }> {
+  const accessToken = await getAccessToken();
+  const maskedToken = accessToken.slice(0, 6) + "…" + accessToken.slice(-4);
+  const url = `https://${SHOPIFY_DOMAIN}/admin/api/${API_VERSION}/graphql.json`;
+
+  const mutation = `mutation TestShopifyQL($q: String!) {
+    shopifyqlTableQuery(query: $q) {
+      tableData { columnHeaders { name } rowData unformattedData }
+      parseErrors { code message }
+    }
+  }`;
+
+  const results = [];
+  for (const q of queries) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" },
+        body: JSON.stringify({ query: mutation, variables: { q } }),
+      });
+      const json = await res.json();
+      results.push({ q, httpStatus: res.status, response: json });
+    } catch (err) {
+      results.push({ q, httpStatus: 0, response: { error: String(err) } });
+    }
+  }
+  return { token: maskedToken, results };
+}
+
 export async function getProductRawAnalytics(range: AnalyticsRange = "all"): Promise<{
   orderCounts: Map<string, number>;   // keyed by product title
   viewsByHandle: Map<string, number>; // keyed by product handle
