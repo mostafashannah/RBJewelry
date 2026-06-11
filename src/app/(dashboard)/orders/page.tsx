@@ -35,9 +35,24 @@ const paymentColor: Record<string, string> = {
   PAID: "bg-green-50 text-green-700",
   PENDING: "bg-yellow-50 text-yellow-700",
   PARTIALLY_REFUNDED: "bg-orange-50 text-orange-700",
+  PARTIALLY_PAID: "bg-orange-50 text-orange-700",
   VOIDED: "bg-zinc-100 text-zinc-500",
   REFUNDED: "bg-red-50 text-red-700",
 };
+
+type StatusFilter = "all" | "unpaid" | "unfulfilled" | "paid" | "fulfilled" | "refunded" | "voided";
+
+function matchesFilter(status: string, f: StatusFilter) {
+  const s = status.toUpperCase();
+  if (f === "all") return true;
+  if (f === "unpaid") return s.includes("PENDING");
+  if (f === "unfulfilled") return s.includes("UNFULFILLED");
+  if (f === "paid") return s.includes("PAID") && !s.includes("REFUNDED");
+  if (f === "fulfilled") return s.includes("FULFILLED") && !s.includes("UNFULFILLED");
+  if (f === "refunded") return s.includes("REFUNDED");
+  if (f === "voided") return s.includes("VOIDED") || s.includes("CANCEL");
+  return true;
+}
 
 function AvailBadge({ r }: { r: AvailResult }) {
   if (!r.found) return (
@@ -68,6 +83,7 @@ export default function OrdersPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
   const [avail, setAvail] = useState<Record<string, AvailState>>({});
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [pullY, setPullY] = useState(0);
   const startYRef = useRef(0);
 
@@ -103,8 +119,30 @@ export default function OrdersPage() {
     setAvail((prev) => ({ ...prev, [orderId]: { loading: false, results: data.results ?? [] } }));
   };
 
-  const paid = orders.filter(o => o.status.includes("PAID"));
+  const paid = orders.filter(o => o.status.toUpperCase().includes("PAID") && !o.status.toUpperCase().includes("REFUNDED"));
   const revenue = paid.reduce((s, o) => s + o.totalPrice, 0);
+
+  const counts: Record<StatusFilter, number> = {
+    all: orders.length,
+    unpaid: orders.filter(o => matchesFilter(o.status, "unpaid")).length,
+    unfulfilled: orders.filter(o => matchesFilter(o.status, "unfulfilled")).length,
+    paid: orders.filter(o => matchesFilter(o.status, "paid")).length,
+    fulfilled: orders.filter(o => matchesFilter(o.status, "fulfilled")).length,
+    refunded: orders.filter(o => matchesFilter(o.status, "refunded")).length,
+    voided: orders.filter(o => matchesFilter(o.status, "voided")).length,
+  };
+
+  const FILTERS: { key: StatusFilter; label: string; color: string }[] = [
+    { key: "all",         label: "All",         color: "bg-zinc-900 text-white" },
+    { key: "unpaid",      label: "Unpaid",       color: "bg-yellow-100 text-yellow-800" },
+    { key: "unfulfilled", label: "Unfulfilled",  color: "bg-orange-100 text-orange-800" },
+    { key: "paid",        label: "Paid",         color: "bg-green-100 text-green-800" },
+    { key: "fulfilled",   label: "Fulfilled",    color: "bg-blue-100 text-blue-800" },
+    { key: "refunded",    label: "Returned",     color: "bg-red-100 text-red-800" },
+    { key: "voided",      label: "Cancelled",    color: "bg-zinc-100 text-zinc-500" },
+  ];
+
+  const visibleOrders = statusFilter === "all" ? orders : orders.filter(o => matchesFilter(o.status, statusFilter));
 
   return (
     <div className="p-4 md:p-8"
@@ -139,17 +177,40 @@ export default function OrdersPage() {
         </p>
       )}
 
+      {/* Status filter pills with counts */}
+      {!loading && orders.length > 0 && (
+        <div className="flex gap-2 flex-wrap mb-5 overflow-x-auto pb-1">
+          {FILTERS.map(({ key, label, color }) => counts[key] > 0 || key === "all" ? (
+            <button key={key} onClick={() => setStatusFilter(key)}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border transition-colors whitespace-nowrap ${
+                statusFilter === key
+                  ? `${color} border-transparent font-medium`
+                  : "border-zinc-200 text-zinc-500 hover:bg-zinc-50"
+              }`}>
+              {label}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                statusFilter === key ? "bg-white/30" : "bg-zinc-100 text-zinc-600"
+              }`}>
+                {counts[key]}
+              </span>
+            </button>
+          ) : null)}
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center h-40">
           <RefreshCw size={16} className="text-zinc-300 animate-spin" />
         </div>
       ) : orders.length === 0 ? (
         <p className="text-sm text-zinc-400 text-center py-20">No orders in cache. Tap Sync Orders to load.</p>
+      ) : visibleOrders.length === 0 ? (
+        <p className="text-sm text-zinc-400 text-center py-20">No {statusFilter} orders.</p>
       ) : (
         <>
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
-            {orders.map((o) => {
+            {visibleOrders.map((o) => {
               const parts = o.status.split(" / ");
               const payment = parts[0] ?? o.status;
               const fulfillment = parts[1] ?? "";
@@ -223,7 +284,7 @@ export default function OrdersPage() {
                 </tr>
               </thead>
               <tbody>
-                {orders.map((o) => {
+                {visibleOrders.map((o) => {
                   const parts = o.status.split(" / ");
                   const payment = parts[0] ?? o.status;
                   const meta = o.lineItemsJson;
