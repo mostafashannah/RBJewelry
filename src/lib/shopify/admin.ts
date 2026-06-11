@@ -348,7 +348,7 @@ export async function syncOrdersToCache() {
   let totalSynced = 0;
 
   while (hasNextPage) {
-    const afterClause = cursor ? `, after: "${cursor}"` : "";
+    const afterClause: string = cursor ? `, after: "${cursor}"` : "";
     const data = await shopifyGraphQL<{
       orders: { pageInfo: { hasNextPage: boolean; endCursor: string }; edges: { node: OrderNode }[] };
     }>(`
