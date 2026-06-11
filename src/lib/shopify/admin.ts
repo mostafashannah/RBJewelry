@@ -293,74 +293,83 @@ async function lookupOrdersFromCache(searchQuery: string): Promise<OrderLookupRe
   });
 }
 
+type OrderNode = {
+  id: string; name: string; email: string | null; phone: string | null;
+  displayFinancialStatus: string; displayFulfillmentStatus: string | null; createdAt: string;
+  totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+  shippingAddress: { firstName: string; lastName: string; phone: string } | null;
+  lineItems: { edges: { node: { title: string; quantity: number } }[] };
+  fulfillments: { status: string; trackingInfo: { number: string; url: string }[] }[];
+};
+
+const ORDER_FIELDS = `
+  id name email phone createdAt
+  displayFinancialStatus displayFulfillmentStatus
+  totalPriceSet { shopMoney { amount currencyCode } }
+  shippingAddress { firstName lastName phone }
+  lineItems(first: 20) { edges { node { title quantity } } }
+  fulfillments(first: 5) { status trackingInfo { number url } }
+`;
+
+async function upsertOrderNode(node: OrderNode) {
+  const lastFulfillment = node.fulfillments[node.fulfillments.length - 1] ?? null;
+  const tracking = lastFulfillment?.trackingInfo?.[0] ?? null;
+  const shipping = node.shippingAddress as { firstName?: string; lastName?: string; phone?: string } | null;
+  const customerName = shipping ? `${shipping.firstName ?? ""} ${shipping.lastName ?? ""}`.trim() : null;
+  const payment = node.displayFinancialStatus as string;
+  const fulfillment = node.displayFulfillmentStatus as string ?? null;
+  const status = `${payment} / ${fulfillment ?? "UNFULFILLED"}`;
+
+  await db.shopifyOrderCache.upsert({
+    where: { id: node.id },
+    update: {
+      status, fulfillmentStatus: fulfillment,
+      trackingNumber: tracking?.number ?? null, trackingUrl: tracking?.url ?? null,
+      lineItemsJson: { customerName, items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity })) },
+      syncedAt: new Date(),
+    },
+    create: {
+      id: node.id, orderNumber: node.name.replace("#", ""),
+      customerEmail: node.email ?? null,
+      customerPhone: (node.phone as string | null) ?? shipping?.phone ?? null,
+      totalPrice: parseFloat(node.totalPriceSet.shopMoney.amount),
+      currency: node.totalPriceSet.shopMoney.currencyCode,
+      status, fulfillmentStatus: fulfillment,
+      trackingNumber: tracking?.number ?? null, trackingUrl: tracking?.url ?? null,
+      lineItemsJson: { customerName, items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity })) },
+      createdAt: new Date(node.createdAt),
+    },
+  });
+}
+
 export async function syncOrdersToCache() {
-  const data = await shopifyGraphQL<{
-    orders: { pageInfo: { hasNextPage: boolean; endCursor: string }; edges: { node: {
-      id: string; name: string; email: string | null; phone: string | null;
-      displayFinancialStatus: string; displayFulfillmentStatus: string | null; createdAt: string;
-      totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
-      shippingAddress: { firstName: string; lastName: string; phone: string } | null;
-      lineItems: { edges: { node: { title: string; quantity: number } }[] };
-      fulfillments: { status: string; trackingInfo: { number: string; url: string }[] }[];
-    } }[] };
-  }>(`
-    query {
-      orders(first: 250, query: "created_at:>2024-01-01") {
-        pageInfo { hasNextPage endCursor }
-        edges {
-          node {
-            id name email phone createdAt
-            displayFinancialStatus displayFulfillmentStatus
-            totalPriceSet { shopMoney { amount currencyCode } }
-            shippingAddress { firstName lastName phone }
-            lineItems(first: 20) { edges { node { title quantity } } }
-            fulfillments(first: 5) {
-              status
-              trackingInfo { number url }
-            }
-          }
+  let cursor: string | null = null;
+  let hasNextPage = true;
+  let totalSynced = 0;
+
+  while (hasNextPage) {
+    const afterClause = cursor ? `, after: "${cursor}"` : "";
+    const data = await shopifyGraphQL<{
+      orders: { pageInfo: { hasNextPage: boolean; endCursor: string }; edges: { node: OrderNode }[] };
+    }>(`
+      query {
+        orders(first: 250${afterClause}, sortKey: CREATED_AT, reverse: true) {
+          pageInfo { hasNextPage endCursor }
+          edges { node { ${ORDER_FIELDS} } }
         }
       }
+    `);
+
+    for (const { node } of data.orders.edges) {
+      await upsertOrderNode(node);
+      totalSynced++;
     }
-  `);
 
-  for (const { node } of data.orders.edges) {
-    const lastFulfillment = node.fulfillments[node.fulfillments.length - 1] ?? null;
-    const tracking = lastFulfillment?.trackingInfo?.[0] ?? null;
-    const shipping = node.shippingAddress as { firstName?: string; lastName?: string; phone?: string } | null;
-    const customerName = shipping ? `${shipping.firstName ?? ""} ${shipping.lastName ?? ""}`.trim() : null;
-    const payment = node.displayFinancialStatus as string;
-    const fulfillment = node.displayFulfillmentStatus as string ?? null;
-    const status = `${payment} / ${fulfillment ?? "UNFULFILLED"}`;
-
-    await db.shopifyOrderCache.upsert({
-      where: { id: node.id },
-      update: {
-        status,
-        fulfillmentStatus: fulfillment,
-        
-        trackingNumber: tracking?.number ?? null,
-        trackingUrl: tracking?.url ?? null,
-        lineItemsJson: { customerName, items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity })) },
-        syncedAt: new Date(),
-      },
-      create: {
-        id: node.id,
-        orderNumber: node.name.replace("#", ""),
-        customerEmail: node.email ?? null,
-        customerPhone: (node.phone as string | null) ?? shipping?.phone ?? null,
-        totalPrice: parseFloat(node.totalPriceSet.shopMoney.amount),
-        currency: node.totalPriceSet.shopMoney.currencyCode,
-        status,
-        fulfillmentStatus: fulfillment,
-        
-        trackingNumber: tracking?.number ?? null,
-        trackingUrl: tracking?.url ?? null,
-        lineItemsJson: { customerName, items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity })) },
-        createdAt: new Date(node.createdAt),
-      },
-    });
+    hasNextPage = data.orders.pageInfo.hasNextPage;
+    cursor = data.orders.pageInfo.endCursor;
   }
+
+  return totalSynced;
 }
 
 export async function getLocations(): Promise<{ locations: { id: string; name: string }[] }> {
