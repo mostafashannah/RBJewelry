@@ -48,10 +48,23 @@ jobs:
           ADMIN_PASSWORD="${{ secrets.ADMIN_PASSWORD || 'RBJewelry2025!' }}"
           ENVEOF
 
-      - name: Create source archive
+      - name: Install dependencies and build
+        run: |
+          npm ci
+          npm run build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
+          SHOPIFY_ADMIN_API_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ADMIN_API_ACCESS_TOKEN }}
+          NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
+          NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${{ secrets.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+
+      - name: Create archive with pre-built app
         run: |
           tar -czf /tmp/rbjewelry-deploy.tar.gz \
-            src public prisma package.json package-lock.json \
+            .next src public prisma package.json package-lock.json \
             next.config.mjs tailwind.config.ts tsconfig.json \
             postcss.config.mjs start.js .env.local
           ls -lh /tmp/rbjewelry-deploy.tar.gz

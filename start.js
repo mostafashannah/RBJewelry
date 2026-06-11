@@ -10,18 +10,22 @@ require("dotenv").config({ path: path.join(__dirname, ".env.local") });
 
 const port = parseInt(process.env.PORT || "3000", 10);
 
-// Always build so new source code is picked up on every deploy
-console.log("> Building app...");
-try {
-  execSync("npm run build", {
-    stdio: "inherit",
-    cwd: __dirname,
-    env: { ...process.env, NODE_ENV: "production", NEXT_TELEMETRY_DISABLED: "1" },
-  });
-  console.log("> Build complete.");
-} catch (err) {
-  console.error("> Build failed:", err.message);
-  process.exit(1);
+// CI pre-builds .next and ships it in the archive — only build locally if missing
+if (!fs.existsSync(path.join(__dirname, ".next", "BUILD_ID"))) {
+  console.log("> No pre-built app found — building now...");
+  try {
+    execSync("npm run build", {
+      stdio: "inherit",
+      cwd: __dirname,
+      env: { ...process.env, NODE_ENV: "production", NEXT_TELEMETRY_DISABLED: "1" },
+    });
+    console.log("> Build complete.");
+  } catch (err) {
+    console.error("> Build failed:", err.message);
+    process.exit(1);
+  }
+} else {
+  console.log("> Using pre-built app.");
 }
 
 // Sync database schema (safely adds missing tables/columns on every restart)
