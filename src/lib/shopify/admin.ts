@@ -382,7 +382,7 @@ function shopifyqlDateClause(range: AnalyticsRange): string {
     case "yesterday": return " SINCE -1d UNTIL -1d";
     case "week":      return " SINCE -6d UNTIL today";
     case "month":     return " SINCE -29d UNTIL today";
-    default:          return "";
+    default:          return " SINCE -365d UNTIL today"; // "all" — Shopify requires a date range
   }
 }
 
@@ -412,8 +412,8 @@ function dbDateFilter(range: AnalyticsRange): { gte?: Date; lt?: Date } | undefi
 
 async function shopifyqlViews(range: AnalyticsRange): Promise<Map<string, number>> {
   const dateClause = shopifyqlDateClause(range);
-  // Shopify ShopifyQL sessions table uses landing_page_path (not landing_page_url)
-  const q = `FROM sessions SHOW sessions GROUP BY landing_page_path ORDER BY sessions DESC LIMIT 250${dateClause}`;
+  // Explicitly include landing_page_path in SHOW so it always appears in columnHeaders
+  const q = `FROM sessions SHOW landing_page_path, sessions GROUP BY landing_page_path ORDER BY sessions DESC LIMIT 250${dateClause}`;
 
   try {
     const data = await shopifyGraphQL<{
@@ -441,26 +441,27 @@ async function shopifyqlViews(range: AnalyticsRange): Promise<Map<string, number
     }
 
     const td = data?.shopifyqlTableQuery?.tableData;
-    if (!td) return new Map();
-
-    const headers = td.columnHeaders.map((h) => h.name);
-    // Accept both landing_page_path and landing_page_url
-    const urlIdx = headers.indexOf("landing_page_path") !== -1
-      ? headers.indexOf("landing_page_path")
-      : headers.indexOf("landing_page_url");
-    const sessIdx = headers.indexOf("sessions");
-
-    if (urlIdx === -1 || sessIdx === -1) {
-      console.error("ShopifyQL sessions: unexpected headers:", headers);
+    if (!td) {
+      console.error("ShopifyQL sessions: tableData is null/undefined");
       return new Map();
     }
 
-    const rows: string[][] = td.rowData ?? td.unformattedData ?? [];
+    const headers = td.columnHeaders.map((h) => h.name);
+    const urlIdx = headers.findIndex((h) => h === "landing_page_path" || h === "landing_page_url" || h === "page_path");
+    const sessIdx = headers.findIndex((h) => h === "sessions");
+
+    if (urlIdx === -1 || sessIdx === -1) {
+      console.error("ShopifyQL sessions: unexpected headers:", JSON.stringify(headers));
+      return new Map();
+    }
+
+    // Prefer unformattedData (raw numbers) over rowData (formatted strings)
+    const rows: string[][] = td.unformattedData ?? td.rowData ?? [];
 
     const views = new Map<string, number>();
     for (const row of rows) {
       const url = String(row[urlIdx] ?? "");
-      const match = url.match(/\/products\/([^/?#]+)/);
+      const match = url.match(/(?:^|\/)products\/([^/?#]+)/);
       if (match) {
         const handle = match[1];
         views.set(handle, (views.get(handle) ?? 0) + parseInt(row[sessIdx] ?? "0", 10));
