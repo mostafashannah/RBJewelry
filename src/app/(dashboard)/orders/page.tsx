@@ -132,6 +132,16 @@ export default function OrdersPage() {
     voided: orders.filter(o => matchesFilter(o.status, "voided")).length,
   };
 
+  const totals: Record<StatusFilter, number> = {
+    all: orders.reduce((s, o) => s + o.totalPrice, 0),
+    unpaid: orders.filter(o => matchesFilter(o.status, "unpaid")).reduce((s, o) => s + o.totalPrice, 0),
+    unfulfilled: orders.filter(o => matchesFilter(o.status, "unfulfilled")).reduce((s, o) => s + o.totalPrice, 0),
+    paid: orders.filter(o => matchesFilter(o.status, "paid")).reduce((s, o) => s + o.totalPrice, 0),
+    fulfilled: orders.filter(o => matchesFilter(o.status, "fulfilled")).reduce((s, o) => s + o.totalPrice, 0),
+    refunded: orders.filter(o => matchesFilter(o.status, "refunded")).reduce((s, o) => s + o.totalPrice, 0),
+    voided: orders.filter(o => matchesFilter(o.status, "voided")).reduce((s, o) => s + o.totalPrice, 0),
+  };
+
   const FILTERS: { key: StatusFilter; label: string; color: string }[] = [
     { key: "all",         label: "All",         color: "bg-zinc-900 text-white" },
     { key: "unpaid",      label: "Unpaid",       color: "bg-yellow-100 text-yellow-800" },
@@ -182,17 +192,24 @@ export default function OrdersPage() {
         <div className="flex gap-2 flex-wrap mb-5 overflow-x-auto pb-1">
           {FILTERS.map(({ key, label, color }) => counts[key] > 0 || key === "all" ? (
             <button key={key} onClick={() => setStatusFilter(key)}
-              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border transition-colors whitespace-nowrap ${
+              className={`flex flex-col items-start px-3 py-2 rounded-xl border transition-colors whitespace-nowrap ${
                 statusFilter === key
                   ? `${color} border-transparent font-medium`
                   : "border-zinc-200 text-zinc-500 hover:bg-zinc-50"
               }`}>
-              {label}
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
-                statusFilter === key ? "bg-white/30" : "bg-zinc-100 text-zinc-600"
-              }`}>
-                {counts[key]}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs">{label}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                  statusFilter === key ? "bg-white/30" : "bg-zinc-100 text-zinc-600"
+                }`}>
+                  {counts[key]}
+                </span>
+              </div>
+              {totals[key] > 0 && (
+                <span className={`text-[10px] mt-0.5 font-medium ${statusFilter === key ? "opacity-80" : "text-zinc-400"}`}>
+                  {totals[key].toLocaleString()} EGP
+                </span>
+              )}
             </button>
           ) : null)}
         </div>
