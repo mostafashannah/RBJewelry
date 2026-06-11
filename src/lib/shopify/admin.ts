@@ -412,10 +412,10 @@ function dbDateFilter(range: AnalyticsRange): { gte?: Date; lt?: Date } | undefi
 
 async function shopifyqlViews(range: AnalyticsRange): Promise<Map<string, number>> {
   const dateClause = shopifyqlDateClause(range);
-  const q = `FROM sessions SHOW sessions GROUP BY landing_page_url ORDER BY sessions DESC LIMIT 250${dateClause}`;
+  // Shopify ShopifyQL sessions table uses landing_page_path (not landing_page_url)
+  const q = `FROM sessions SHOW sessions GROUP BY landing_page_path ORDER BY sessions DESC LIMIT 250${dateClause}`;
 
   try {
-    // Try the ShopifyQL GraphQL mutation (Shopify Admin API 2022-10+)
     const data = await shopifyGraphQL<{
       shopifyqlTableQuery?: {
         tableData?: {
@@ -423,21 +423,38 @@ async function shopifyqlViews(range: AnalyticsRange): Promise<Map<string, number
           rowData?: string[][];
           unformattedData?: string[][];
         };
+        parseErrors?: { code: string; message: string }[];
       };
     }>(`
       mutation ShopifyqlViews($q: String!) {
         shopifyqlTableQuery(query: $q) {
           tableData { columnHeaders { name } rowData unformattedData }
+          parseErrors { code message }
         }
       }
     `, { q });
+
+    const parseErrors = data?.shopifyqlTableQuery?.parseErrors;
+    if (parseErrors?.length) {
+      console.error("ShopifyQL parse errors:", JSON.stringify(parseErrors));
+      return new Map();
+    }
 
     const td = data?.shopifyqlTableQuery?.tableData;
     if (!td) return new Map();
 
     const headers = td.columnHeaders.map((h) => h.name);
-    const urlIdx = headers.indexOf("landing_page_url");
+    // Accept both landing_page_path and landing_page_url
+    const urlIdx = headers.indexOf("landing_page_path") !== -1
+      ? headers.indexOf("landing_page_path")
+      : headers.indexOf("landing_page_url");
     const sessIdx = headers.indexOf("sessions");
+
+    if (urlIdx === -1 || sessIdx === -1) {
+      console.error("ShopifyQL sessions: unexpected headers:", headers);
+      return new Map();
+    }
+
     const rows: string[][] = td.rowData ?? td.unformattedData ?? [];
 
     const views = new Map<string, number>();
@@ -450,7 +467,8 @@ async function shopifyqlViews(range: AnalyticsRange): Promise<Map<string, number
       }
     }
     return views;
-  } catch {
+  } catch (err) {
+    console.error("shopifyqlViews error:", err);
     return new Map();
   }
 }
