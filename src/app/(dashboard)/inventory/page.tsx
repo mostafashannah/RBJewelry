@@ -28,6 +28,14 @@ const COLOR_CODES = [
 const RING_SIZES = ["5", "6", "7", "8", "9", "10", "OS"];
 const SIZE_CATS = ["Ring", "Bracelet", "Anklet"];
 
+function sizeFromItem(item: { size?: string | null; sku?: string | null }): string | null {
+  if (item.size) return item.size;
+  if (!item.sku) return null;
+  const parts = item.sku.split("-");
+  const last = parts[parts.length - 1];
+  return /^\d+$/.test(last) ? last : null;
+}
+
 type AddMode = "existing" | "new-color" | "new";
 type SkuMeta = {
   byCategory: Record<string, Array<{ id: string; name: string; sku: string | null; priceEGP: number | null }>>;
@@ -456,7 +464,14 @@ export default function InventoryPage() {
                 )}
               </div>
               <div className="p-3">
-                <p className="text-xs font-medium text-zinc-900 truncate">{item.name}</p>
+                <div className="flex items-start justify-between gap-1">
+                  <p className="text-xs font-medium text-zinc-900 truncate">{item.name}</p>
+                  {sizeFromItem(item) && (
+                    <span className="text-[9px] font-semibold text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded-full shrink-0">
+                      {sizeFromItem(item)}
+                    </span>
+                  )}
+                </div>
                 {item.sku && <p className="text-[10px] text-zinc-400 font-mono">{item.sku}</p>}
                 <div className="flex items-center gap-1 mt-1 flex-wrap">
                   <Scale size={10} className="text-zinc-300" />
@@ -509,7 +524,14 @@ export default function InventoryPage() {
                   </td>
                   <td className="px-3 py-2 font-mono text-zinc-500 whitespace-nowrap">{item.sku ?? "—"}</td>
                   <td className="px-3 py-2 font-medium text-zinc-900 max-w-[160px]">
-                    <p className="truncate">{item.name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="truncate">{item.name}</p>
+                      {sizeFromItem(item) && (
+                        <span className="text-[9px] font-semibold text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded-full shrink-0">
+                          {sizeFromItem(item)}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[10px] text-zinc-400 font-normal">{item.category}</p>
                   </td>
                   <td className="px-3 py-2 text-zinc-500">{item.colors?.join(", ") || "—"}</td>

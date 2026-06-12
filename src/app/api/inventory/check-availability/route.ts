@@ -25,9 +25,15 @@ export async function POST(req: NextRequest) {
     let matches = titleMatches;
     let sizeMatched = !hasSize; // true when no size needed
     if (hasSize && titleMatches.length > 0) {
+      const skuLastSegment = (sku: string | null) => {
+        if (!sku) return null;
+        const parts = sku.split("-");
+        const last = parts[parts.length - 1];
+        return /^\d+$/.test(last) ? last : null;
+      };
       const sizeMatches = titleMatches.filter((inv) =>
         inv.name.toLowerCase().includes(sizeNeedle!) ||
-        (inv.sku != null && inv.sku.toLowerCase().includes(sizeNeedle!))
+        skuLastSegment(inv.sku) === sizeNeedle
       );
       if (sizeMatches.length > 0) {
         matches = sizeMatches;
