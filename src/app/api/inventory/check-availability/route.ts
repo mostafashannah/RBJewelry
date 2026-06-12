@@ -10,6 +10,15 @@ function canonicalSize(s: string): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
+// Extract all numeric tokens from a string using exec loop (avoids matchAll iterator TS issues)
+function numericTokens(s: string): string[] {
+  const re = /\b\d+(?:\.\d+)?\b/g;
+  const result: string[] = [];
+  let hit: RegExpExecArray | null;
+  while ((hit = re.exec(s)) !== null) result.push(hit[0]);
+  return result;
+}
+
 // Strip trailing numeric token from an inventory name: "Marquise Ring 8" → "marquise ring"
 function baseName(name: string): string {
   return name.toLowerCase().trim().replace(/\s+\d+(?:\.\d+)?\s*$/, "").trim();
@@ -43,7 +52,7 @@ export async function POST(req: NextRequest) {
       return hay === needle || baseName(inv.name) === needle;
     });
 
-    // Use close matches (more precise) to determine whether this product type tracks sizes.
+    // Use close matches to determine whether this product type tracks sizes.
     // Fall back to all title matches if no close match exists.
     const sizeCheckItems = closeMatches.length > 0 ? closeMatches : titleMatches;
     const anyTracksSize = sizeCheckItems.some((inv) =>
@@ -61,16 +70,12 @@ export async function POST(req: NextRequest) {
         // 1. Dedicated size field
         if (inv.size != null && canonicalSize(inv.size) === canonicalNeedle) return true;
         // 2. Numeric tokens anywhere in the inventory item name
-        for (const m of inv.name.matchAll(/\b\d+(?:\.\d+)?\b/g)) {
-          if (canonicalSize(m[0]) === canonicalNeedle) return true;
-        }
+        if (numericTokens(inv.name).some((t) => canonicalSize(t) === canonicalNeedle)) return true;
         // 3. SKU — last segment or any numeric token
         if (inv.sku) {
           const last = inv.sku.split("-").pop() ?? "";
           if (/^\d+$/.test(last) && canonicalSize(last) === canonicalNeedle) return true;
-          for (const m of inv.sku.matchAll(/\b\d+(?:\.\d+)?\b/g)) {
-            if (canonicalSize(m[0]) === canonicalNeedle) return true;
-          }
+          if (numericTokens(inv.sku).some((t) => canonicalSize(t) === canonicalNeedle)) return true;
         }
         return false;
       });
