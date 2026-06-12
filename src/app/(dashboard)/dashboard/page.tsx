@@ -113,6 +113,24 @@ export default function DashboardPage() {
       {summary && (
         <div className="space-y-3">
           <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Financials</p>
+          {/* Actual Profit */}
+          {(() => {
+            const actualProfit = (summary.revenue ?? 0) + (summary.stockValue ?? 0) - (summary.totalExpenses ?? 0);
+            return (
+              <div className={`rounded-xl p-4 border ${actualProfit >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                <p className="text-xs text-zinc-500 mb-1">Actual Profit = Net Revenue + Stock Value − Expenses</p>
+                <p className={`text-3xl font-bold ${actualProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  {actualProfit >= 0 ? "+" : ""}{actualProfit.toLocaleString()} EGP
+                </p>
+                <div className="flex gap-4 mt-2 text-[11px] text-zinc-400">
+                  <span>Revenue {(summary.revenue ?? 0).toLocaleString()}</span>
+                  <span>+ Stock {(summary.stockValue ?? 0).toLocaleString()}</span>
+                  <span>− Exp {(summary.totalExpenses ?? 0).toLocaleString()}</span>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Balance */}
           {(() => {
             const bal = summary.balance ?? 0;
