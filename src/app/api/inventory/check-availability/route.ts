@@ -25,35 +25,49 @@ function baseName(name: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  const { items } = await req.json() as { items: { title: string; quantity: number; variantTitle?: string }[] };
+  const { items } = await req.json() as { items: { title: string; quantity: number; variantTitle?: string; sku?: string }[] };
   if (!Array.isArray(items) || items.length === 0) return NextResponse.json({ results: [] });
 
   const allInventory = await db.inventoryItem.findMany({
     select: { name: true, status: true, quantity: true, sku: true, size: true },
   });
 
-  const results = items.map(({ title, quantity, variantTitle }) => {
+  const results = items.map(({ title, quantity, variantTitle, sku: itemSku }) => {
     const needle = title.toLowerCase().trim();
     const sizeNeedle = variantTitle?.toLowerCase().trim();
     const hasSize = sizeNeedle && sizeNeedle !== "default title";
     const canonicalNeedle = hasSize ? canonicalSize(sizeNeedle!) : null;
+    const orderSku = itemSku?.trim().toLowerCase();
 
+    // --- SKU-first matching ---
+    // If the order line item has a SKU, match directly against inventory SKU (most reliable)
+    if (orderSku) {
+      const skuMatches = allInventory.filter(
+        (inv) => inv.sku != null && inv.sku.trim().toLowerCase() === orderSku
+      );
+      if (skuMatches.length > 0) {
+        const inStock = skuMatches.filter((m) => m.status === "IN_STOCK").reduce((s, m) => s + m.quantity, 0);
+        const reserved = skuMatches.filter((m) => m.status === "RESERVED").length;
+        const sold = skuMatches.filter((m) => m.status === "SOLD").length;
+        return { title, variantTitle: variantTitle ?? null, quantity, found: true, sizeMatched: true, inStock, reserved, sold, sku: itemSku };
+      }
+    }
+
+    // --- Title + size matching (fallback) ---
     // Broad title match: inventory name contains order title or vice versa
     const titleMatches = allInventory.filter((inv) => {
       const hay = inv.name.toLowerCase().trim();
       return hay.includes(needle) || needle.includes(hay);
     });
 
-    // "Close" matches: inventory name (minus trailing size digit) equals order title exactly
+    // Close matches: inventory base name equals order title exactly
     // e.g. "Marquise Ring 8" base = "marquise ring" matches needle "marquise ring" ✓
-    //      "Marquise Ring Necklace 18" base = "marquise ring necklace" ≠ needle ✗
     const closeMatches = titleMatches.filter((inv) => {
       const hay = inv.name.toLowerCase().trim();
       return hay === needle || baseName(inv.name) === needle;
     });
 
-    // Use close matches to determine whether this product type tracks sizes.
-    // Fall back to all title matches if no close match exists.
+    // Use close matches to decide if this product type tracks sizes
     const sizeCheckItems = closeMatches.length > 0 ? closeMatches : titleMatches;
     const anyTracksSize = sizeCheckItems.some((inv) =>
       inv.size != null ||
@@ -62,10 +76,9 @@ export async function POST(req: NextRequest) {
     );
 
     let matches = titleMatches;
-    let sizeMatched = !hasSize; // true when no size filter needed
+    let sizeMatched = !hasSize;
 
     if (hasSize && titleMatches.length > 0 && canonicalNeedle) {
-      // Canonical numeric comparison handles "Size 8" / "US 8" / "08" / "8.0" → all "8"
       const sizeMatches = titleMatches.filter((inv) => {
         // 1. Dedicated size field
         if (inv.size != null && canonicalSize(inv.size) === canonicalNeedle) return true;
@@ -84,7 +97,7 @@ export async function POST(req: NextRequest) {
         matches = sizeMatches;
         sizeMatched = true;
       } else if (!anyTracksSize) {
-        // No size information found on any close-matched item → product doesn't track sizes
+        // No size info found on any close-matched item → product doesn't track sizes
         sizeMatched = true;
       }
     }
@@ -102,6 +115,7 @@ export async function POST(req: NextRequest) {
       inStock,
       reserved,
       sold,
+      sku: itemSku,
     };
   });
 

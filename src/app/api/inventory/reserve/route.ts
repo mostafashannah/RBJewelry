@@ -6,8 +6,8 @@ const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const sizeToken = (sz: string) => new RegExp(`(?<![0-9.])${escRe(sz)}(?![0-9.])`, "i");
 
 export async function POST(req: NextRequest) {
-  const { title, variantTitle, orderNumber } = await req.json() as {
-    title: string; variantTitle?: string; orderNumber: string;
+  const { title, variantTitle, orderNumber, sku } = await req.json() as {
+    title: string; variantTitle?: string; orderNumber: string; sku?: string;
   };
 
   if (!title || !orderNumber) {
@@ -18,6 +18,22 @@ export async function POST(req: NextRequest) {
     where: { status: "IN_STOCK" },
     select: { id: true, name: true, size: true, sku: true },
   });
+
+  // SKU-first: most reliable match
+  if (sku?.trim()) {
+    const orderSku = sku.trim().toLowerCase();
+    const skuMatches = allInventory.filter(
+      (inv) => inv.sku != null && inv.sku.trim().toLowerCase() === orderSku
+    );
+    if (skuMatches.length > 0) {
+      const item = skuMatches[0];
+      await db.inventoryItem.update({
+        where: { id: item.id },
+        data: { status: "RESERVED", orderNo: orderNumber },
+      });
+      return NextResponse.json({ ok: true, reservedId: item.id, reservedName: item.name });
+    }
+  }
 
   const needle = title.toLowerCase().trim();
   const sizeNeedle = variantTitle?.toLowerCase().trim();

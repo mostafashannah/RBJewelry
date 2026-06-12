@@ -14,7 +14,7 @@ interface Order {
   trackingNumber: string | null;
   trackingUrl: string | null;
   createdAt: string;
-  lineItemsJson: { customerName?: string; items?: { title: string; quantity: number; variantTitle?: string }[] };
+  lineItemsJson: { customerName?: string; items?: { title: string; quantity: number; variantTitle?: string; sku?: string }[] };
 }
 
 interface AvailResult {
@@ -26,6 +26,7 @@ interface AvailResult {
   inStock: number;
   reserved: number;
   sold: number;
+  sku?: string;
 }
 
 interface AvailState {
@@ -137,7 +138,7 @@ export default function OrdersPage() {
     setSyncing(false);
   };
 
-  const checkAvailability = async (orderId: string, items: { title: string; quantity: number; variantTitle?: string }[]) => {
+  const checkAvailability = async (orderId: string, items: { title: string; quantity: number; variantTitle?: string; sku?: string }[]) => {
     if (!items.length) return;
     setAvail((prev) => ({ ...prev, [orderId]: { loading: true } }));
     const res = await fetch("/api/inventory/check-availability", {
@@ -149,14 +150,14 @@ export default function OrdersPage() {
     setAvail((prev) => ({ ...prev, [orderId]: { loading: false, results: data.results ?? [] } }));
   };
 
-  const holdItem = async (orderNumber: string, title: string, variantTitle: string | null | undefined) => {
+  const holdItem = async (orderNumber: string, title: string, variantTitle: string | null | undefined, sku?: string) => {
     const key = `${orderNumber}:${title}:${variantTitle ?? ""}`;
     const confirmed = window.confirm(`Hold "${title}${variantTitle ? ` (${variantTitle})` : ""}" for order #${orderNumber}?`);
     if (!confirmed) return;
     const res = await fetch("/api/inventory/reserve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, variantTitle: variantTitle ?? undefined, orderNumber }),
+      body: JSON.stringify({ title, variantTitle: variantTitle ?? undefined, orderNumber, sku: sku ?? undefined }),
     });
     if (res.ok) {
       setHeldItems((prev) => ({ ...prev, [key]: true }));
@@ -328,7 +329,7 @@ export default function OrdersPage() {
                                   {r.quantity}× {r.title}{r.variantTitle ? ` (${r.variantTitle})` : ""}
                                 </span>
                                 <AvailBadge r={r} held={heldItems[hKey]}
-                                  onHold={() => holdItem(o.orderNumber, r.title, r.variantTitle)} />
+                                  onHold={() => holdItem(o.orderNumber, r.title, r.variantTitle, r.sku)} />
                               </div>
                             );
                           })}
@@ -397,7 +398,7 @@ export default function OrdersPage() {
                               return (
                                 <div key={i} className="flex items-center gap-1.5 flex-wrap">
                                   <AvailBadge r={r} held={heldItems[hKey]}
-                                    onHold={() => holdItem(o.orderNumber, r.title, r.variantTitle)} />
+                                    onHold={() => holdItem(o.orderNumber, r.title, r.variantTitle, r.sku)} />
                                   <span className="text-zinc-400 truncate max-w-[120px]">
                                     {r.title}{r.variantTitle ? ` (${r.variantTitle})` : ""}
                                   </span>
