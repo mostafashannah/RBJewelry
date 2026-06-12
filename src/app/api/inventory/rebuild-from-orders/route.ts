@@ -146,9 +146,9 @@ export async function POST() {
 
     // Step 2: Try Google Sheets for additional cost data
     const sheetCosts = await readCostsFromSheets();
-    for (const [sku, cost] of sheetCosts) {
+    sheetCosts.forEach((cost, sku) => {
       if (!costBySku.has(sku)) costBySku.set(sku, cost);
-    }
+    });
 
     // Step 3: Delete all inventory items
     const { count: deleted } = await db.inventoryItem.deleteMany({});
