@@ -22,6 +22,7 @@ interface AvailResult {
   variantTitle: string | null;
   quantity: number;
   found: boolean;
+  sizeMatched: boolean;
   inStock: number;
   reserved: number;
   sold: number;
@@ -59,6 +60,11 @@ function AvailBadge({ r }: { r: AvailResult }) {
   if (!r.found) return (
     <span className="flex items-center gap-1 text-[10px] text-red-600">
       <XCircle size={10} /> Not in inventory
+    </span>
+  );
+  if (!r.sizeMatched) return (
+    <span className="flex items-center gap-1 text-[10px] text-orange-500">
+      <AlertCircle size={10} /> Size not tracked
     </span>
   );
   if (r.inStock >= r.quantity) return (

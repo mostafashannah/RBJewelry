@@ -23,11 +23,16 @@ export async function POST(req: NextRequest) {
 
     // Narrow by size if available and matches exist
     let matches = titleMatches;
+    let sizeMatched = !hasSize; // true when no size needed
     if (hasSize && titleMatches.length > 0) {
       const sizeMatches = titleMatches.filter((inv) =>
         inv.name.toLowerCase().includes(sizeNeedle!)
       );
-      if (sizeMatches.length > 0) matches = sizeMatches;
+      if (sizeMatches.length > 0) {
+        matches = sizeMatches;
+        sizeMatched = true;
+      }
+      // sizeMatched stays false — we have title matches but none for this specific size
     }
 
     const inStock = matches.filter((m) => m.status === "IN_STOCK").reduce((s, m) => s + m.quantity, 0);
@@ -39,6 +44,7 @@ export async function POST(req: NextRequest) {
       variantTitle: variantTitle ?? null,
       quantity,
       found: matches.length > 0,
+      sizeMatched,
       inStock,
       reserved,
       sold,
