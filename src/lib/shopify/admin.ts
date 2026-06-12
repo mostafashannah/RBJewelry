@@ -297,6 +297,7 @@ type OrderNode = {
   id: string; name: string; email: string | null; phone: string | null;
   displayFinancialStatus: string; displayFulfillmentStatus: string | null; createdAt: string;
   totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+  totalShippingPriceSet: { shopMoney: { amount: string } } | null;
   shippingAddress: { firstName: string; lastName: string; phone: string } | null;
   lineItems: { edges: { node: { title: string; quantity: number; variant: { title: string } | null } }[] };
   fulfillments: { status: string; trackingInfo: { number: string; url: string }[] }[];
@@ -306,6 +307,7 @@ const ORDER_FIELDS = `
   id name email phone createdAt
   displayFinancialStatus displayFulfillmentStatus
   totalPriceSet { shopMoney { amount currencyCode } }
+  totalShippingPriceSet { shopMoney { amount } }
   shippingAddress { firstName lastName phone }
   lineItems(first: 20) { edges { node { title quantity variant { title } } } }
   fulfillments(first: 5) { status trackingInfo { number url } }
@@ -320,12 +322,16 @@ async function upsertOrderNode(node: OrderNode) {
   const fulfillment = node.displayFulfillmentStatus as string ?? null;
   const status = `${payment} / ${fulfillment ?? "UNFULFILLED"}`;
 
+  const shippingPrice = parseFloat(node.totalShippingPriceSet?.shopMoney?.amount ?? "0") || 0;
+  const lineItemsJson = { customerName, items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity, variantTitle: li.variant?.title && li.variant.title !== "Default Title" ? li.variant.title : undefined })) };
+
   await db.shopifyOrderCache.upsert({
     where: { id: node.id },
     update: {
       status, fulfillmentStatus: fulfillment,
+      shippingPrice,
       trackingNumber: tracking?.number ?? null, trackingUrl: tracking?.url ?? null,
-      lineItemsJson: { customerName, items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity, variantTitle: li.variant?.title && li.variant.title !== "Default Title" ? li.variant.title : undefined })) },
+      lineItemsJson,
       syncedAt: new Date(),
     },
     create: {
@@ -333,10 +339,11 @@ async function upsertOrderNode(node: OrderNode) {
       customerEmail: node.email ?? null,
       customerPhone: (node.phone as string | null) ?? shipping?.phone ?? null,
       totalPrice: parseFloat(node.totalPriceSet.shopMoney.amount),
+      shippingPrice,
       currency: node.totalPriceSet.shopMoney.currencyCode,
       status, fulfillmentStatus: fulfillment,
       trackingNumber: tracking?.number ?? null, trackingUrl: tracking?.url ?? null,
-      lineItemsJson: { customerName, items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity, variantTitle: li.variant?.title && li.variant.title !== "Default Title" ? li.variant.title : undefined })) },
+      lineItemsJson,
       createdAt: new Date(node.createdAt),
     },
   });

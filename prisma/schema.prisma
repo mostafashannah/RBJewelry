@@ -155,6 +155,7 @@ model ShopifyOrderCache {
   customerEmail     String?
   customerPhone     String?
   totalPrice        Float
+  shippingPrice     Float    @default(0)
   currency          String
   status            String
   fulfillmentStatus String?

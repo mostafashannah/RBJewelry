@@ -193,6 +193,35 @@ export default function FinancesPage() {
           <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Shareholder Investments</p>
           <p className="text-sm font-semibold text-purple-600">{totalInvested.toLocaleString()} EGP total</p>
         </div>
+
+        {/* Per-shareholder totals — Radwa & Mostafa always first */}
+        {investments.length > 0 && (() => {
+          const byName: Record<string, number> = {};
+          investments.forEach((inv) => { byName[inv.name] = (byName[inv.name] ?? 0) + inv.amount; });
+          const PINNED = ["Radwa", "Mostafa"];
+          const sorted = Object.entries(byName).sort((a, b) => {
+            const aPin = PINNED.findIndex((p) => a[0].toLowerCase().includes(p.toLowerCase()));
+            const bPin = PINNED.findIndex((p) => b[0].toLowerCase().includes(p.toLowerCase()));
+            if (aPin !== -1 && bPin !== -1) return aPin - bPin;
+            if (aPin !== -1) return -1;
+            if (bPin !== -1) return 1;
+            return b[1] - a[1];
+          });
+          return (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {sorted.map(([name, total]) => (
+                <div key={name} className={`${cardCls} flex flex-col gap-0.5`}>
+                  <p className="text-xs font-semibold text-zinc-700 truncate">{name}</p>
+                  <p className="text-lg font-bold text-purple-600">{total.toLocaleString()} EGP</p>
+                  <p className="text-[10px] text-zinc-400">
+                    {investments.filter((i) => i.name === name).length} transaction{investments.filter((i) => i.name === name).length !== 1 ? "s" : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
         <div className="flex items-center gap-2">
           <input
             value={shareholderFilter}

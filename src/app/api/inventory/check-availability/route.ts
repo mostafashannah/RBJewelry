@@ -45,8 +45,16 @@ export async function POST(req: NextRequest) {
       if (sizeMatches.length > 0) {
         matches = sizeMatches;
         sizeMatched = true;
+      } else {
+        // If none of the matched items store any size info at all, the inventory
+        // doesn't track sizes for this product — treat title match as sufficient.
+        const anyTracksSize = titleMatches.some((inv) =>
+          inv.size != null ||
+          /(?<![0-9.])\d+(?![0-9.])/.test(inv.name) ||
+          (inv.sku != null && inv.sku.split("-").pop()?.match(/^\d+$/))
+        );
+        if (!anyTracksSize) sizeMatched = true;
       }
-      // sizeMatched stays false — title matched but no size-specific match found
     }
 
     const inStock = matches.filter((m) => m.status === "IN_STOCK").reduce((s, m) => s + m.quantity, 0);

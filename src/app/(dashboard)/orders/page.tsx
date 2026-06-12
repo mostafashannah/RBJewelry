@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { format } from "date-fns";
-import { RefreshCw, PackageSearch, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
+import { RefreshCw, PackageSearch, CheckCircle2, XCircle, AlertCircle, Bookmark } from "lucide-react";
 
 interface Order {
   id: string;
@@ -56,7 +56,17 @@ function matchesFilter(status: string, f: StatusFilter) {
   return true;
 }
 
-function AvailBadge({ r }: { r: AvailResult }) {
+function AvailBadge({ r, held, onHold }: { r: AvailResult; held?: boolean; onHold?: () => void }) {
+  const canHold = r.found && r.inStock > 0 && onHold;
+  const holdBtn = canHold && !held ? (
+    <button onClick={onHold}
+      className="flex items-center gap-0.5 text-[9px] text-blue-500 hover:text-blue-700 border border-blue-200 rounded px-1 py-0.5 ml-1 transition-colors">
+      <Bookmark size={8} /> Hold
+    </button>
+  ) : held ? (
+    <span className="text-[9px] text-blue-600 ml-1 font-medium">Reserved ✓</span>
+  ) : null;
+
   if (!r.found) return (
     <span className="flex items-center gap-1 text-[10px] text-red-600">
       <XCircle size={10} /> Not in inventory
@@ -65,12 +75,12 @@ function AvailBadge({ r }: { r: AvailResult }) {
   if (!r.sizeMatched) {
     if (r.inStock >= r.quantity) return (
       <span className="flex items-center gap-1 text-[10px] text-amber-500">
-        <AlertCircle size={10} /> In stock ({r.inStock}), size?
+        <AlertCircle size={10} /> In stock ({r.inStock}), size?{holdBtn}
       </span>
     );
     if (r.inStock > 0) return (
       <span className="flex items-center gap-1 text-[10px] text-amber-600">
-        <AlertCircle size={10} /> Low stock ({r.inStock}), size?
+        <AlertCircle size={10} /> Low stock ({r.inStock}), size?{holdBtn}
       </span>
     );
     return (
@@ -81,12 +91,12 @@ function AvailBadge({ r }: { r: AvailResult }) {
   }
   if (r.inStock >= r.quantity) return (
     <span className="flex items-center gap-1 text-[10px] text-emerald-600">
-      <CheckCircle2 size={10} /> In stock ({r.inStock})
+      <CheckCircle2 size={10} /> In stock ({r.inStock}){holdBtn}
     </span>
   );
   if (r.inStock > 0) return (
     <span className="flex items-center gap-1 text-[10px] text-amber-600">
-      <AlertCircle size={10} /> Low stock ({r.inStock})
+      <AlertCircle size={10} /> Low stock ({r.inStock}){holdBtn}
     </span>
   );
   return (
@@ -102,6 +112,7 @@ export default function OrdersPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
   const [avail, setAvail] = useState<Record<string, AvailState>>({});
+  const [heldItems, setHeldItems] = useState<Record<string, boolean>>({});
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [pullY, setPullY] = useState(0);
   const startYRef = useRef(0);
@@ -136,6 +147,23 @@ export default function OrdersPage() {
     });
     const data = await res.json();
     setAvail((prev) => ({ ...prev, [orderId]: { loading: false, results: data.results ?? [] } }));
+  };
+
+  const holdItem = async (orderNumber: string, title: string, variantTitle: string | null | undefined) => {
+    const key = `${orderNumber}:${title}:${variantTitle ?? ""}`;
+    const confirmed = window.confirm(`Hold "${title}${variantTitle ? ` (${variantTitle})` : ""}" for order #${orderNumber}?`);
+    if (!confirmed) return;
+    const res = await fetch("/api/inventory/reserve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, variantTitle: variantTitle ?? undefined, orderNumber }),
+    });
+    if (res.ok) {
+      setHeldItems((prev) => ({ ...prev, [key]: true }));
+    } else {
+      const d = await res.json();
+      alert(d.error ?? "Could not reserve item.");
+    }
   };
 
   const paid = orders.filter(o => o.status.toUpperCase().includes("PAID") && !o.status.toUpperCase().includes("REFUNDED"));
@@ -292,14 +320,18 @@ export default function OrdersPage() {
                         </div>
                       ) : (
                         <div className="space-y-1">
-                          {av.results?.map((r, i) => (
-                            <div key={i} className="flex items-center justify-between gap-2">
-                              <span className="text-[11px] text-zinc-600 truncate">
-                                {r.quantity}× {r.title}{r.variantTitle ? ` (${r.variantTitle})` : ""}
-                              </span>
-                              <AvailBadge r={r} />
-                            </div>
-                          ))}
+                          {av.results?.map((r, i) => {
+                            const hKey = `${o.orderNumber}:${r.title}:${r.variantTitle ?? ""}`;
+                            return (
+                              <div key={i} className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] text-zinc-600 truncate">
+                                  {r.quantity}× {r.title}{r.variantTitle ? ` (${r.variantTitle})` : ""}
+                                </span>
+                                <AvailBadge r={r} held={heldItems[hKey]}
+                                  onHold={() => holdItem(o.orderNumber, r.title, r.variantTitle)} />
+                              </div>
+                            );
+                          })}
                           <button onClick={() => setAvail((p) => { const n = { ...p }; delete n[o.id]; return n; })}
                             className="text-[10px] text-zinc-400 underline mt-0.5">clear</button>
                         </div>
@@ -360,14 +392,18 @@ export default function OrdersPage() {
                           <span className="flex items-center gap-1 text-zinc-400"><RefreshCw size={10} className="animate-spin" /> Checking…</span>
                         ) : (
                           <div className="space-y-0.5">
-                            {av.results?.map((r, i) => (
-                              <div key={i} className="flex items-center gap-1.5">
-                                <AvailBadge r={r} />
-                                <span className="text-zinc-400 truncate max-w-[120px]">
-                                  {r.title}{r.variantTitle ? ` (${r.variantTitle})` : ""}
-                                </span>
-                              </div>
-                            ))}
+                            {av.results?.map((r, i) => {
+                              const hKey = `${o.orderNumber}:${r.title}:${r.variantTitle ?? ""}`;
+                              return (
+                                <div key={i} className="flex items-center gap-1.5 flex-wrap">
+                                  <AvailBadge r={r} held={heldItems[hKey]}
+                                    onHold={() => holdItem(o.orderNumber, r.title, r.variantTitle)} />
+                                  <span className="text-zinc-400 truncate max-w-[120px]">
+                                    {r.title}{r.variantTitle ? ` (${r.variantTitle})` : ""}
+                                  </span>
+                                </div>
+                              );
+                            })}
                             <button onClick={() => setAvail((p) => { const n = { ...p }; delete n[o.id]; return n; })}
                               className="text-[10px] text-zinc-400 underline">clear</button>
                           </div>

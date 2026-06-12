@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
-import { Eye, EyeOff, RefreshCw, Save, Trash2, UserPlus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Eye, EyeOff, RefreshCw, Save, Trash2, Upload, UserPlus } from "lucide-react";
 
 // ── Team / Users ─────────────────────────────────────────────────────────────
 
@@ -313,6 +313,59 @@ const WEBHOOKS = [
   { label: "Shopify", path: "/api/webhooks/shopify" },
 ];
 
+function IconUploadSection() {
+  const [uploading, setUploading] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [iconKey, setIconKey] = useState(Date.now());
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setMsg(null);
+    const fd = new FormData();
+    fd.append("icon", file);
+    const res = await fetch("/api/settings/icon", { method: "POST", body: fd });
+    const data = await res.json();
+    if (res.ok) {
+      setMsg({ ok: true, text: "Icon updated. Refresh the page to see it." });
+      setIconKey(Date.now());
+    } else {
+      setMsg({ ok: false, text: data.error ?? "Upload failed." });
+    }
+    setUploading(false);
+    if (inputRef.current) inputRef.current.value = "";
+    setTimeout(() => setMsg(null), 5000);
+  };
+
+  return (
+    <div className="flex items-start gap-4">
+      <div className="text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img key={iconKey} src={`/icon-192.png?v=${iconKey}`} alt="App icon" className="w-16 h-16 rounded-2xl object-cover mb-1" />
+        <p className="text-[10px] text-zinc-400">App icon</p>
+      </div>
+      <div className="flex-1 space-y-2">
+        <p className="text-xs text-zinc-600 font-medium">RB Jewelry</p>
+        <p className="text-xs text-zinc-400">Upload a square PNG or JPG image (min 192×192px). It will be used as the PWA home screen icon.</p>
+        {msg && (
+          <p className={`text-xs ${msg.ok ? "text-green-700" : "text-red-600"}`}>{msg.text}</p>
+        )}
+        <button
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-zinc-200 rounded-lg hover:bg-zinc-50 text-zinc-600 transition-colors disabled:opacity-40"
+        >
+          <Upload size={12} />
+          {uploading ? "Uploading…" : "Upload new icon"}
+        </button>
+        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const [config, setConfig] = useState<AiConfig | null>(null);
   const [saving, setSaving] = useState(false);
@@ -426,19 +479,7 @@ export default function SettingsPage() {
           </div>
           <div className="border-t border-zinc-50 pt-4">
             <p className="text-xs font-medium text-zinc-500 mb-2">App Logo & Icon</p>
-            <div className="flex items-start gap-4">
-              <div className="text-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/icon-192.png" alt="App icon" className="w-16 h-16 rounded-2xl object-cover mb-1" />
-                <p className="text-[10px] text-zinc-400">App icon</p>
-              </div>
-              <div className="flex-1 text-xs text-zinc-400 leading-relaxed">
-                <p className="text-zinc-600 font-medium mb-1">RB Jewelry</p>
-                <p>Logo: white/dark background with gold <span className="font-semibold text-[#c9a96e]">RB Jewelry</span> wordmark</p>
-                <p className="mt-1">Icon: dark square with gold RB monogram</p>
-                <p className="mt-2 text-zinc-400">To update logo/icon files, replace <code className="bg-zinc-50 px-1 rounded">public/icon-*.png</code> and <code className="bg-zinc-50 px-1 rounded">public/manifest.json</code></p>
-              </div>
-            </div>
+            <IconUploadSection />
           </div>
         </div>
       </div>

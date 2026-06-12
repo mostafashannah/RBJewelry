@@ -11,9 +11,9 @@ export async function GET() {
       db.shareholderInvestment.findMany().catch(() => []),
     ]);
 
-    // Revenue: paid orders — handle both webhook format ("paid") and sync format ("PAID / FULFILLED")
+    // Revenue: paid orders minus shipping — handle both webhook format ("paid") and sync format ("PAID / FULFILLED")
     const paidOrders = orders.filter((o) => o.status.toLowerCase().includes("paid"));
-    const revenue = paidOrders.reduce((s, o) => s + o.totalPrice, 0);
+    const revenue = paidOrders.reduce((s, o) => s + o.totalPrice - (o.shippingPrice ?? 0), 0);
 
     // Expenses
     const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
