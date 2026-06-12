@@ -62,11 +62,23 @@ function AvailBadge({ r }: { r: AvailResult }) {
       <XCircle size={10} /> Not in inventory
     </span>
   );
-  if (!r.sizeMatched) return (
-    <span className="flex items-center gap-1 text-[10px] text-orange-500">
-      <AlertCircle size={10} /> Size not tracked
-    </span>
-  );
+  if (!r.sizeMatched) {
+    if (r.inStock >= r.quantity) return (
+      <span className="flex items-center gap-1 text-[10px] text-amber-500">
+        <AlertCircle size={10} /> In stock ({r.inStock}), size?
+      </span>
+    );
+    if (r.inStock > 0) return (
+      <span className="flex items-center gap-1 text-[10px] text-amber-600">
+        <AlertCircle size={10} /> Low stock ({r.inStock}), size?
+      </span>
+    );
+    return (
+      <span className="flex items-center gap-1 text-[10px] text-zinc-500">
+        <AlertCircle size={10} /> Not in stock, size?
+      </span>
+    );
+  }
   if (r.inStock >= r.quantity) return (
     <span className="flex items-center gap-1 text-[10px] text-emerald-600">
       <CheckCircle2 size={10} /> In stock ({r.inStock})
