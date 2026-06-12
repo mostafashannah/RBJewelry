@@ -58,6 +58,7 @@ jobs:
 
       - name: Seed inventory from paid orders (one-time, skips if already done)
         run: node scripts/rebuild-inventory.mjs
+        continue-on-error: true
 
       - name: Build
         run: npm run build
