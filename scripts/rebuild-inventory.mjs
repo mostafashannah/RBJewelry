@@ -8,7 +8,7 @@ import { PrismaClient } from "@prisma/client";
 // Load .env.local so values match the deployed app exactly
 if (existsSync(".env.local")) {
   for (const line of readFileSync(".env.local", "utf8").split("\n")) {
-    const m = line.match(/^([A-Z0-9_]+)\s*=\s*"?([^"]*)"?\s*$/);
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*"?([^"]*)"?\s*$/);
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
   }
 }
