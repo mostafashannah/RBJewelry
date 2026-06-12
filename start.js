@@ -53,17 +53,19 @@ if (!fs.existsSync(path.join(__dirname, ".next", "BUILD_ID"))) {
 }
 
 // Sync database schema (safely adds missing tables/columns on every restart)
+// Note: prisma db push also runs in CI before deploy, so this is a safety net only.
 try {
   console.log("> Syncing database schema...");
   execSync("npx prisma db push --accept-data-loss --skip-generate", {
     stdio: "inherit",
     cwd: __dirname,
     env: { ...process.env },
-    timeout: 30000,
+    timeout: 60000,
   });
   console.log("> Database schema up to date.");
 } catch (err) {
-  console.error("> DB sync failed (continuing anyway):", err.message);
+  console.error("> DB sync failed:", err.message);
+  console.error("> This is non-fatal if CI already applied migrations.");
 }
 
 const app = next({ dev: false, hostname: "0.0.0.0", port });
