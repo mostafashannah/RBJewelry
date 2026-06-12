@@ -35,6 +35,7 @@ try {
     stdio: "inherit",
     cwd: __dirname,
     env: { ...process.env },
+    timeout: 30000,
   });
   console.log("> Database schema up to date.");
 } catch (err) {
