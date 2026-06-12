@@ -16,7 +16,12 @@ async function shopifyFetch(query, variables) {
     body: JSON.stringify({ query, variables }),
   });
   const json = await res.json();
-  if (json.errors?.length) throw new Error(json.errors.map((e) => e.message).join(", "));
+  if (json.errors) {
+    const msg = Array.isArray(json.errors)
+      ? json.errors.map((e) => e.message ?? String(e)).join(", ")
+      : JSON.stringify(json.errors);
+    throw new Error(msg);
+  }
   return json.data;
 }
 
