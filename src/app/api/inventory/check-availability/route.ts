@@ -26,7 +26,8 @@ export async function POST(req: NextRequest) {
     let sizeMatched = !hasSize; // true when no size needed
     if (hasSize && titleMatches.length > 0) {
       const sizeMatches = titleMatches.filter((inv) =>
-        inv.name.toLowerCase().includes(sizeNeedle!)
+        inv.name.toLowerCase().includes(sizeNeedle!) ||
+        (inv.sku != null && inv.sku.toLowerCase().includes(sizeNeedle!))
       );
       if (sizeMatches.length > 0) {
         matches = sizeMatches;
