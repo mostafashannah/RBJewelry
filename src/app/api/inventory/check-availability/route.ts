@@ -7,8 +7,15 @@ export async function POST(req: NextRequest) {
   if (!Array.isArray(items) || items.length === 0) return NextResponse.json({ results: [] });
 
   const allInventory = await db.inventoryItem.findMany({
-    select: { name: true, status: true, quantity: true, sku: true },
+    select: { name: true, status: true, quantity: true, sku: true, size: true },
   });
+
+  const skuLastSegment = (sku: string | null): string | null => {
+    if (!sku) return null;
+    const parts = sku.split("-");
+    const last = parts[parts.length - 1];
+    return /^\d+$/.test(last) ? last : null;
+  };
 
   const results = items.map(({ title, quantity, variantTitle }) => {
     const needle = title.toLowerCase().trim();
@@ -25,14 +32,9 @@ export async function POST(req: NextRequest) {
     let matches = titleMatches;
     let sizeMatched = !hasSize; // true when no size needed
     if (hasSize && titleMatches.length > 0) {
-      const skuLastSegment = (sku: string | null) => {
-        if (!sku) return null;
-        const parts = sku.split("-");
-        const last = parts[parts.length - 1];
-        return /^\d+$/.test(last) ? last : null;
-      };
       const sizeMatches = titleMatches.filter((inv) =>
         inv.name.toLowerCase().includes(sizeNeedle!) ||
+        (inv.size?.toLowerCase().trim() === sizeNeedle) ||
         skuLastSegment(inv.sku) === sizeNeedle
       );
       if (sizeMatches.length > 0) {
