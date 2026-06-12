@@ -1,13 +1,11 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,7 +18,9 @@ export default function LoginPage() {
     });
     const data = await res.json();
     if (res.ok) {
-      router.push(data.role === "LIMITED" ? "/inventory" : "/dashboard");
+      // Full page reload ensures the Set-Cookie header is committed before the next
+      // request — prevents iOS PWA standalone mode from losing the session cookie.
+      window.location.href = data.role === "LIMITED" ? "/inventory" : "/dashboard";
     } else {
       setError(data.error ?? "Incorrect credentials");
       setLoading(false);
@@ -82,7 +82,7 @@ export default function LoginPage() {
                 });
                 const data = await res.json();
                 if (res.ok) {
-                  router.push("/inventory");
+                  window.location.href = "/inventory";
                 } else {
                   setError(data.error ?? "Demo unavailable");
                   setLoading(false);

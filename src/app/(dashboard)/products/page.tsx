@@ -42,6 +42,7 @@ export default function ProductsPage() {
   const [analytics, setAnalytics]           = useState<Record<string, ProductAnalytics>>({});
   const [loading, setLoading]               = useState(true);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError]     = useState(false);
   const [syncing, setSyncing]               = useState(false);
   const [syncMsg, setSyncMsg]               = useState("");
   const [sortBy, setSortBy]                 = useState<SortBy>("default");
@@ -64,8 +65,13 @@ export default function ProductsPage() {
     try {
       const res = await fetch(`/api/shopify/product-analytics?range=${range}`);
       const data = await res.json();
-      setAnalytics(data.analytics ?? {});
-    } catch { /* leave stale */ }
+      if (!res.ok || data.error) {
+        setAnalyticsError(true);
+      } else {
+        setAnalyticsError(false);
+        setAnalytics(data.analytics ?? {});
+      }
+    } catch { setAnalyticsError(true); }
     setAnalyticsLoading(false);
   }, []);
 
@@ -182,9 +188,14 @@ export default function ProductsPage() {
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {sortedProducts.map((p) => {
-            const raw = p.rawJson as { productType?: string; variants?: { edges?: { node?: { inventoryQuantity?: number } }[] } };
-            const variantNodes = raw?.variants?.edges ?? [];
-            const totalQty = variantNodes.reduce((s, v) => s + (v?.node?.inventoryQuantity ?? 0), 0);
+            // rawJson is stored in REST format: variants is a flat array with inventory_quantity
+            // (not GraphQL edges). Support both shapes for forward compatibility.
+            const raw = p.rawJson as { productType?: string; variants?: unknown };
+            const rawVariants = raw?.variants;
+            const variantNodes: { inventoryQuantity?: number }[] = Array.isArray(rawVariants)
+              ? (rawVariants as { inventory_quantity?: number }[]).map((v) => ({ inventoryQuantity: v.inventory_quantity }))
+              : ((rawVariants as { edges?: { node?: { inventoryQuantity?: number } }[] })?.edges ?? []).map((e) => e?.node ?? {});
+            const totalQty = variantNodes.reduce((s, v) => s + (v?.inventoryQuantity ?? 0), 0);
             const price = p.priceMin === p.priceMax
               ? `${p.priceMin.toLocaleString()} EGP`
               : `${p.priceMin.toLocaleString()}–${p.priceMax.toLocaleString()} EGP`;
@@ -193,11 +204,16 @@ export default function ProductsPage() {
             const orders = stat?.orders ?? 0;
             const views  = stat?.views  ?? 0;
 
+            const rawProductType = (raw as { productType?: string })?.productType;
             return (
               <div key={p.id} className="bg-white border border-zinc-100 rounded-xl overflow-hidden">
-                {p.imageUrl && (
+                {p.imageUrl ? (
                   <div className="aspect-square relative bg-zinc-50">
                     <Image src={p.imageUrl} alt={p.title} fill className="object-cover" sizes="200px" unoptimized />
+                  </div>
+                ) : (
+                  <div className="aspect-square bg-zinc-50 flex items-center justify-center">
+                    <ShoppingBag size={28} className="text-zinc-200" />
                   </div>
                 )}
                 <div className="p-3">
@@ -211,8 +227,8 @@ export default function ProductsPage() {
                     }`}>
                       {totalQty > 0 ? `${totalQty} in stock` : p.available ? "Available" : "Out of stock"}
                     </span>
-                    {raw?.productType && (
-                      <span className="text-[10px] text-zinc-400">{raw.productType}</span>
+                    {rawProductType && (
+                      <span className="text-[10px] text-zinc-400">{rawProductType}</span>
                     )}
                   </div>
 
@@ -222,13 +238,13 @@ export default function ProductsPage() {
                       orders > 0 ? "text-zinc-700" : "text-zinc-300"
                     }`}>
                       <ShoppingBag size={10} />
-                      {analyticsLoading && !stat ? "—" : orders}
+                      {analyticsLoading ? "—" : analyticsError ? "—" : orders}
                     </span>
                     <span className={`flex items-center gap-1 text-[10px] font-medium ${
                       views > 0 ? "text-zinc-500" : "text-zinc-300"
                     }`}>
                       <Eye size={10} />
-                      {analyticsLoading && !stat ? "—" : views}
+                      {analyticsLoading ? "—" : analyticsError ? "—" : views}
                     </span>
                   </div>
                 </div>

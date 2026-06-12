@@ -2,6 +2,19 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
+// Normalize a size value to a canonical numeric string so "8", "08", "8.0", "Size 8", "US 8", "EU 8" all equal "8"
+function canonicalSize(s: string): string {
+  const m = s.trim().match(/\b(\d+(?:\.\d+)?)\b/);
+  if (!m) return s.trim().toLowerCase();
+  const n = parseFloat(m[1]);
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+// Strip trailing numeric token from an inventory name: "Marquise Ring 8" → "marquise ring"
+function baseName(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+\d+(?:\.\d+)?\s*$/, "").trim();
+}
+
 export async function POST(req: NextRequest) {
   const { items } = await req.json() as { items: { title: string; quantity: number; variantTitle?: string }[] };
   if (!Array.isArray(items) || items.length === 0) return NextResponse.json({ results: [] });
@@ -10,50 +23,64 @@ export async function POST(req: NextRequest) {
     select: { name: true, status: true, quantity: true, sku: true, size: true },
   });
 
-  // Build a regex that matches a size token not surrounded by other digits/dots
-  // e.g. sizeToken("8") matches "8", "Size 8", "Marquise Ring 8" but NOT "18" or "8.5"
-  const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const sizeToken = (sz: string) => new RegExp(`(?<![0-9.])${escRe(sz)}(?![0-9.])`, "i");
-
   const results = items.map(({ title, quantity, variantTitle }) => {
     const needle = title.toLowerCase().trim();
     const sizeNeedle = variantTitle?.toLowerCase().trim();
     const hasSize = sizeNeedle && sizeNeedle !== "default title";
+    const canonicalNeedle = hasSize ? canonicalSize(sizeNeedle!) : null;
 
-    // Match by title
+    // Broad title match: inventory name contains order title or vice versa
     const titleMatches = allInventory.filter((inv) => {
       const hay = inv.name.toLowerCase().trim();
       return hay.includes(needle) || needle.includes(hay);
     });
 
-    // Narrow by size if available and matches exist
+    // "Close" matches: inventory name (minus trailing size digit) equals order title exactly
+    // e.g. "Marquise Ring 8" base = "marquise ring" matches needle "marquise ring" ✓
+    //      "Marquise Ring Necklace 18" base = "marquise ring necklace" ≠ needle ✗
+    const closeMatches = titleMatches.filter((inv) => {
+      const hay = inv.name.toLowerCase().trim();
+      return hay === needle || baseName(inv.name) === needle;
+    });
+
+    // Use close matches (more precise) to determine whether this product type tracks sizes.
+    // Fall back to all title matches if no close match exists.
+    const sizeCheckItems = closeMatches.length > 0 ? closeMatches : titleMatches;
+    const anyTracksSize = sizeCheckItems.some((inv) =>
+      inv.size != null ||
+      /\b\d+\b/.test(inv.name) ||
+      (inv.sku != null && /^\d+$/.test(inv.sku.split("-").pop() ?? ""))
+    );
+
     let matches = titleMatches;
-    let sizeMatched = !hasSize; // true when no size needed
-    if (hasSize && titleMatches.length > 0) {
-      const pat = sizeToken(sizeNeedle!);
-      const sizeMatches = titleMatches.filter((inv) =>
-        // 1. size token anywhere in the inventory item name (e.g. "Marquise Ring 8")
-        pat.test(inv.name) ||
-        // 2. dedicated size field — exact or word-boundary (handles "Size 8", "8", "8 EU", etc.)
-        (inv.size != null && (inv.size.trim() === sizeNeedle! || pat.test(inv.size))) ||
-        // 3. SKU — last numeric segment after "-" OR anywhere in the SKU string
-        (inv.sku != null && (
-          (inv.sku.split("-").pop()?.match(/^\d+$/) ?? [""])[0] === sizeNeedle! ||
-          pat.test(inv.sku)
-        ))
-      );
+    let sizeMatched = !hasSize; // true when no size filter needed
+
+    if (hasSize && titleMatches.length > 0 && canonicalNeedle) {
+      // Canonical numeric comparison handles "Size 8" / "US 8" / "08" / "8.0" → all "8"
+      const sizeMatches = titleMatches.filter((inv) => {
+        // 1. Dedicated size field
+        if (inv.size != null && canonicalSize(inv.size) === canonicalNeedle) return true;
+        // 2. Numeric tokens anywhere in the inventory item name
+        for (const m of inv.name.matchAll(/\b\d+(?:\.\d+)?\b/g)) {
+          if (canonicalSize(m[0]) === canonicalNeedle) return true;
+        }
+        // 3. SKU — last segment or any numeric token
+        if (inv.sku) {
+          const last = inv.sku.split("-").pop() ?? "";
+          if (/^\d+$/.test(last) && canonicalSize(last) === canonicalNeedle) return true;
+          for (const m of inv.sku.matchAll(/\b\d+(?:\.\d+)?\b/g)) {
+            if (canonicalSize(m[0]) === canonicalNeedle) return true;
+          }
+        }
+        return false;
+      });
+
       if (sizeMatches.length > 0) {
         matches = sizeMatches;
         sizeMatched = true;
-      } else {
-        // If none of the matched items store any size info at all, the inventory
-        // doesn't track sizes for this product — treat title match as sufficient.
-        const anyTracksSize = titleMatches.some((inv) =>
-          inv.size != null ||
-          /(?<![0-9.])\d+(?![0-9.])/.test(inv.name) ||
-          (inv.sku != null && inv.sku.split("-").pop()?.match(/^\d+$/))
-        );
-        if (!anyTracksSize) sizeMatched = true;
+      } else if (!anyTracksSize) {
+        // No size information found on any close-matched item → product doesn't track sizes
+        sizeMatched = true;
       }
     }
 
