@@ -58,10 +58,6 @@ jobs:
 
       - name: Seed inventory from paid orders (one-time, skips if already done)
         run: node scripts/rebuild-inventory.mjs
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
-          SHOPIFY_ADMIN_API_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ADMIN_API_ACCESS_TOKEN }}
 
       - name: Build
         run: npm run build

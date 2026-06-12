@@ -2,7 +2,16 @@
  * One-time inventory setup: populates inventory from all paid Shopify orders.
  * Skips automatically if SOLD items already exist in the database.
  */
+import { existsSync, readFileSync } from "fs";
 import { PrismaClient } from "@prisma/client";
+
+// Load .env.local so values match the deployed app exactly
+if (existsSync(".env.local")) {
+  for (const line of readFileSync(".env.local", "utf8").split("\n")) {
+    const m = line.match(/^([A-Z0-9_]+)\s*=\s*"?([^"]*)"?\s*$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+  }
+}
 
 const db = new PrismaClient();
 const SHOPIFY_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
