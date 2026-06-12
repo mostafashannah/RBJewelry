@@ -9,12 +9,17 @@ export default function LoginPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Read directly from DOM in case autofill didn't fire onChange
+    const form = e.currentTarget as HTMLFormElement;
+    const pwdInput = form.querySelector<HTMLInputElement>('input[type="password"]');
+    const actualPassword = pwdInput?.value || password;
+    if (!actualPassword) return;
     setLoading(true);
     setError("");
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email.trim() || undefined, password }),
+      body: JSON.stringify({ email: email.trim() || undefined, password: actualPassword }),
     });
     const data = await res.json();
     if (res.ok) {
@@ -55,7 +60,9 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
               placeholder="Enter password"
+              autoComplete="current-password"
               autoFocus
               className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-zinc-400"
             />
@@ -63,7 +70,7 @@ export default function LoginPage() {
           {error && <p className="text-xs text-red-500">{error}</p>}
           <button
             type="submit"
-            disabled={loading || !password}
+            disabled={loading}
             className="w-full bg-zinc-900 text-white rounded-xl py-3 text-sm font-medium hover:bg-zinc-700 disabled:opacity-40 transition-colors mt-1"
           >
             {loading ? "Signing in…" : "Sign in"}
