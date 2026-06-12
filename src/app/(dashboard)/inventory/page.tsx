@@ -102,10 +102,6 @@ export default function InventoryPage() {
   const suggTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
-  const [rebuilding, setRebuilding] = useState(false);
-  const [rebuildResult, setRebuildResult] = useState<string | null>(null);
-  const [showRebuildConfirm, setShowRebuildConfirm] = useState(false);
-
   // Smart add mode
   const [addMode, setAddMode] = useState<AddMode>("existing");
   const [skuMeta, setSkuMeta] = useState<SkuMeta | null>(null);
@@ -333,21 +329,6 @@ export default function InventoryPage() {
     load(); loadSilver();
   };
 
-  const rebuildFromOrders = async () => {
-    setShowRebuildConfirm(false);
-    setRebuilding(true);
-    setRebuildResult(null);
-    const res = await fetch("/api/inventory/rebuild-from-orders", { method: "POST" });
-    const data = await res.json();
-    if (data.ok) {
-      setRebuildResult(`Done: removed ${data.deleted} items, added ${data.created} sold items from ${data.orders} paid orders.`);
-      load(); loadSilver();
-    } else {
-      setRebuildResult(`Error: ${data.error}`);
-    }
-    setRebuilding(false);
-  };
-
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
       {/* Header */}
@@ -385,14 +366,6 @@ export default function InventoryPage() {
             className="flex items-center gap-1.5 border border-zinc-200 text-zinc-600 text-sm px-3 py-2 rounded-xl hover:bg-zinc-50 transition-colors">
             <FileSpreadsheet size={14} /> Import
           </button>
-          <button
-            onClick={() => setShowRebuildConfirm(true)}
-            disabled={rebuilding}
-            title="Clear all inventory and rebuild from paid Shopify orders"
-            className="flex items-center gap-1.5 border border-amber-200 text-amber-700 bg-amber-50 text-sm px-3 py-2 rounded-xl hover:bg-amber-100 transition-colors disabled:opacity-40">
-            {rebuilding ? <Loader2 size={14} className="animate-spin" /> : <ShoppingBag size={14} />}
-            {rebuilding ? "Rebuilding…" : "From Orders"}
-          </button>
           <button onClick={openAdd}
             className="flex items-center gap-1.5 bg-zinc-900 text-white text-sm px-4 py-2 rounded-xl hover:bg-zinc-700 transition-colors">
             <Plus size={14} /> Add Item
@@ -403,13 +376,6 @@ export default function InventoryPage() {
       {syncResult && (
         <div className="text-xs text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5 border border-emerald-100 mb-3">{syncResult}</div>
       )}
-      {rebuildResult && (
-        <div className={`text-xs rounded-xl px-4 py-2.5 border mb-3 ${rebuildResult.startsWith("Error") ? "bg-red-50 text-red-700 border-red-100" : "bg-emerald-50 text-emerald-700 border-emerald-100"}`}>
-          {rebuildResult}
-          <button onClick={() => setRebuildResult(null)} className="ml-2 underline">dismiss</button>
-        </div>
-      )}
-
       {/* Silver Dashboard */}
       <div className="bg-white border border-zinc-100 rounded-2xl p-4 mb-5">
         <div className="flex items-center justify-between mb-3">
@@ -988,37 +954,6 @@ export default function InventoryPage() {
                 {saving ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
                 {saving ? "Saving…" : editItem ? "Save Changes" : "Add to Inventory"}
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Rebuild from Orders Confirmation Modal */}
-      {showRebuildConfirm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl">
-            <div className="p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <AlertCircle size={18} className="text-amber-500 shrink-0" />
-                <h2 className="text-sm font-semibold text-zinc-900">Rebuild Inventory from Paid Orders?</h2>
-              </div>
-              <p className="text-xs text-zinc-500 mb-1">This will:</p>
-              <ul className="text-xs text-zinc-600 space-y-1 mb-4 ml-4 list-disc">
-                <li>Save cost &amp; weight data from all existing items</li>
-                <li><span className="text-red-600 font-medium">Delete all current inventory items</span></li>
-                <li>Fetch all paid Shopify orders</li>
-                <li>Add each line item as a <span className="font-medium">SOLD</span> record with order number, SKU &amp; selling price</li>
-                <li>Restore cost from saved data or Google Sheets</li>
-              </ul>
-              <div className="flex gap-2">
-                <button onClick={() => setShowRebuildConfirm(false)}
-                  className="flex-1 border border-zinc-200 text-zinc-600 rounded-xl py-2.5 text-sm hover:bg-zinc-50 transition-colors">
-                  Cancel
-                </button>
-                <button onClick={rebuildFromOrders}
-                  className="flex-1 bg-amber-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-amber-700 transition-colors">
-                  Yes, Rebuild
-                </button>
-              </div>
             </div>
           </div>
         </div>
