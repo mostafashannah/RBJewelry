@@ -10,12 +10,10 @@ export async function POST(req: NextRequest) {
     select: { name: true, status: true, quantity: true, sku: true, size: true },
   });
 
-  const skuLastSegment = (sku: string | null): string | null => {
-    if (!sku) return null;
-    const parts = sku.split("-");
-    const last = parts[parts.length - 1];
-    return /^\d+$/.test(last) ? last : null;
-  };
+  // Build a regex that matches a size token not surrounded by other digits/dots
+  // e.g. sizeToken("8") matches "8", "Size 8", "Marquise Ring 8" but NOT "18" or "8.5"
+  const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const sizeToken = (sz: string) => new RegExp(`(?<![0-9.])${escRe(sz)}(?![0-9.])`, "i");
 
   const results = items.map(({ title, quantity, variantTitle }) => {
     const needle = title.toLowerCase().trim();
@@ -32,16 +30,23 @@ export async function POST(req: NextRequest) {
     let matches = titleMatches;
     let sizeMatched = !hasSize; // true when no size needed
     if (hasSize && titleMatches.length > 0) {
+      const pat = sizeToken(sizeNeedle!);
       const sizeMatches = titleMatches.filter((inv) =>
-        inv.name.toLowerCase().includes(sizeNeedle!) ||
-        (inv.size?.toLowerCase().trim() === sizeNeedle) ||
-        skuLastSegment(inv.sku) === sizeNeedle
+        // 1. size token anywhere in the inventory item name (e.g. "Marquise Ring 8")
+        pat.test(inv.name) ||
+        // 2. dedicated size field — exact or word-boundary (handles "Size 8", "8", "8 EU", etc.)
+        (inv.size != null && (inv.size.trim() === sizeNeedle! || pat.test(inv.size))) ||
+        // 3. SKU — last numeric segment after "-" OR anywhere in the SKU string
+        (inv.sku != null && (
+          (inv.sku.split("-").pop()?.match(/^\d+$/) ?? [""])[0] === sizeNeedle! ||
+          pat.test(inv.sku)
+        ))
       );
       if (sizeMatches.length > 0) {
         matches = sizeMatches;
         sizeMatched = true;
       }
-      // sizeMatched stays false — we have title matches but none for this specific size
+      // sizeMatched stays false — title matched but no size-specific match found
     }
 
     const inStock = matches.filter((m) => m.status === "IN_STOCK").reduce((s, m) => s + m.quantity, 0);
