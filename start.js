@@ -8,6 +8,30 @@ const next = require("next");
 // Load .env.local explicitly so env vars are available regardless of how the host starts the app
 require("dotenv").config({ path: path.join(__dirname, ".env.local") });
 
+// Prisma engine panic ("timer has gone away") leaves the singleton permanently broken.
+// Exit and let Hostinger restart the process so the engine is recreated fresh.
+function isPrismaEnginePanic(err) {
+  const msg = err && (err.message || String(err));
+  return msg && (msg.includes("timer has gone away") || (msg.includes("PANIC") && msg.includes("prisma")));
+}
+
+process.on("uncaughtException", (err) => {
+  if (isPrismaEnginePanic(err)) {
+    console.error("> Prisma engine panic — restarting process:", err.message);
+    process.exit(1);
+  }
+  console.error("> Uncaught exception:", err);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  if (isPrismaEnginePanic(reason)) {
+    console.error("> Prisma engine panic (unhandled rejection) — restarting:", reason && reason.message);
+    process.exit(1);
+  }
+  console.error("> Unhandled rejection:", reason);
+});
+
 const port = parseInt(process.env.PORT || "3000", 10);
 
 // CI pre-builds .next and ships it in the archive — only build locally if missing

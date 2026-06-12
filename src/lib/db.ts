@@ -6,8 +6,8 @@ const globalForPrisma = globalThis as unknown as {
 
 const dbUrl = process.env.DATABASE_URL
   ? process.env.DATABASE_URL.includes("?")
-    ? `${process.env.DATABASE_URL}&connection_limit=3&pool_timeout=30`
-    : `${process.env.DATABASE_URL}?connection_limit=3&pool_timeout=30`
+    ? `${process.env.DATABASE_URL}&connection_limit=1&pool_timeout=20&connect_timeout=30`
+    : `${process.env.DATABASE_URL}?connection_limit=1&pool_timeout=20&connect_timeout=30`
   : undefined;
 
 function createClient() {
