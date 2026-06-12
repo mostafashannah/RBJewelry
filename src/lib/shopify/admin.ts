@@ -298,7 +298,7 @@ type OrderNode = {
   displayFinancialStatus: string; displayFulfillmentStatus: string | null; createdAt: string;
   totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
   shippingAddress: { firstName: string; lastName: string; phone: string } | null;
-  lineItems: { edges: { node: { title: string; quantity: number } }[] };
+  lineItems: { edges: { node: { title: string; quantity: number; variant: { title: string } | null } }[] };
   fulfillments: { status: string; trackingInfo: { number: string; url: string }[] }[];
 };
 
@@ -307,7 +307,7 @@ const ORDER_FIELDS = `
   displayFinancialStatus displayFulfillmentStatus
   totalPriceSet { shopMoney { amount currencyCode } }
   shippingAddress { firstName lastName phone }
-  lineItems(first: 20) { edges { node { title quantity } } }
+  lineItems(first: 20) { edges { node { title quantity variant { title } } } }
   fulfillments(first: 5) { status trackingInfo { number url } }
 `;
 
@@ -325,7 +325,7 @@ async function upsertOrderNode(node: OrderNode) {
     update: {
       status, fulfillmentStatus: fulfillment,
       trackingNumber: tracking?.number ?? null, trackingUrl: tracking?.url ?? null,
-      lineItemsJson: { customerName, items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity })) },
+      lineItemsJson: { customerName, items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity, variantTitle: li.variant?.title && li.variant.title !== "Default Title" ? li.variant.title : undefined })) },
       syncedAt: new Date(),
     },
     create: {
@@ -336,7 +336,7 @@ async function upsertOrderNode(node: OrderNode) {
       currency: node.totalPriceSet.shopMoney.currencyCode,
       status, fulfillmentStatus: fulfillment,
       trackingNumber: tracking?.number ?? null, trackingUrl: tracking?.url ?? null,
-      lineItemsJson: { customerName, items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity })) },
+      lineItemsJson: { customerName, items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity, variantTitle: li.variant?.title && li.variant.title !== "Default Title" ? li.variant.title : undefined })) },
       createdAt: new Date(node.createdAt),
     },
   });

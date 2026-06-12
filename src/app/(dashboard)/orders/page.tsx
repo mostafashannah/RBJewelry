@@ -14,11 +14,12 @@ interface Order {
   trackingNumber: string | null;
   trackingUrl: string | null;
   createdAt: string;
-  lineItemsJson: { customerName?: string; items?: { title: string; quantity: number }[] };
+  lineItemsJson: { customerName?: string; items?: { title: string; quantity: number; variantTitle?: string }[] };
 }
 
 interface AvailResult {
   title: string;
+  variantTitle: string | null;
   quantity: number;
   found: boolean;
   inStock: number;
@@ -107,7 +108,7 @@ export default function OrdersPage() {
     setSyncing(false);
   };
 
-  const checkAvailability = async (orderId: string, items: { title: string; quantity: number }[]) => {
+  const checkAvailability = async (orderId: string, items: { title: string; quantity: number; variantTitle?: string }[]) => {
     if (!items.length) return;
     setAvail((prev) => ({ ...prev, [orderId]: { loading: true } }));
     const res = await fetch("/api/inventory/check-availability", {
@@ -233,7 +234,7 @@ export default function OrdersPage() {
               const fulfillment = parts[1] ?? "";
               const meta = o.lineItemsJson;
               const items = meta?.items ?? [];
-              const itemsStr = items.map(i => `${i.quantity}× ${i.title}`).join(", ");
+              const itemsStr = items.map(i => `${i.quantity}× ${i.title}${i.variantTitle ? ` (${i.variantTitle})` : ""}`).join(", ");
               const av = avail[o.id];
               return (
                 <div key={o.id} className="bg-white border border-zinc-100 rounded-xl p-4">
@@ -275,7 +276,9 @@ export default function OrdersPage() {
                         <div className="space-y-1">
                           {av.results?.map((r, i) => (
                             <div key={i} className="flex items-center justify-between gap-2">
-                              <span className="text-[11px] text-zinc-600 truncate">{r.quantity}× {r.title}</span>
+                              <span className="text-[11px] text-zinc-600 truncate">
+                                {r.quantity}× {r.title}{r.variantTitle ? ` (${r.variantTitle})` : ""}
+                              </span>
                               <AvailBadge r={r} />
                             </div>
                           ))}
@@ -306,7 +309,7 @@ export default function OrdersPage() {
                   const payment = parts[0] ?? o.status;
                   const meta = o.lineItemsJson;
                   const items = meta?.items ?? [];
-                  const itemsStr = items.map(i => `${i.quantity}× ${i.title}`).join(", ");
+                  const itemsStr = items.map(i => `${i.quantity}× ${i.title}${i.variantTitle ? ` (${i.variantTitle})` : ""}`).join(", ");
                   const av = avail[o.id];
                   return (
                     <tr key={o.id} className="border-b border-zinc-50 hover:bg-zinc-50 transition-colors">
@@ -342,7 +345,9 @@ export default function OrdersPage() {
                             {av.results?.map((r, i) => (
                               <div key={i} className="flex items-center gap-1.5">
                                 <AvailBadge r={r} />
-                                <span className="text-zinc-400 truncate max-w-[100px]">{r.title}</span>
+                                <span className="text-zinc-400 truncate max-w-[120px]">
+                                  {r.title}{r.variantTitle ? ` (${r.variantTitle})` : ""}
+                                </span>
                               </div>
                             ))}
                             <button onClick={() => setAvail((p) => { const n = { ...p }; delete n[o.id]; return n; })}
