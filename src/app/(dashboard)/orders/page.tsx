@@ -388,14 +388,9 @@ function OrderDetailModal({ numericId, onClose }: { numericId: string; onClose: 
                 <div className="border-t border-zinc-100 pt-4 mt-4">
                   <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Discount Codes</p>
                   <div className="flex flex-wrap gap-2">
-                    {detail.discountCodes.map((d, i) => (
+                    {detail.discountCodes.map((code, i) => (
                       <span key={i} className="text-xs font-mono bg-zinc-50 border border-zinc-200 rounded-lg px-2.5 py-1 text-zinc-700">
-                        {d.code}
-                        {parseFloat(d.amount) > 0 && (
-                          <span className="text-zinc-400 ml-1.5">
-                            {d.type === "PERCENTAGE" ? `${d.amount}%` : formatPrice(d.amount, detail.currency)} off
-                          </span>
-                        )}
+                        {code}
                       </span>
                     ))}
                   </div>

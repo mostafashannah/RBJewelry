@@ -651,11 +651,7 @@ export interface OrderDetail {
     status: string;
     amount: string;
   }[];
-  discountCodes: {
-    code: string;
-    amount: string;
-    type: string;
-  }[];
+  discountCodes: string[];
 }
 
 const ORDER_DETAIL_QUERY = `
@@ -700,7 +696,7 @@ const ORDER_DETAIL_QUERY = `
         status
         amountSet { shopMoney { amount } }
       }
-      discountCodes { code amount type }
+      discountCodes
     }
   }
 `;
@@ -752,7 +748,7 @@ export async function fetchOrderDetail(numericId: string): Promise<OrderDetail> 
         status: string;
         amountSet: { shopMoney: { amount: string } };
       }[];
-      discountCodes: { code: string; amount: string; type: string }[];
+      discountCodes: string[];
     } | null;
   }>(ORDER_DETAIL_QUERY, { id: gid });
 
