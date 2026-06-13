@@ -680,6 +680,7 @@ const ORDER_DETAIL_QUERY = `
           node {
             title
             quantity
+            sku
             originalUnitPriceSet { shopMoney { amount } }
             variant { title sku }
           }
@@ -732,6 +733,7 @@ export async function fetchOrderDetail(numericId: string): Promise<OrderDetail> 
           node: {
             title: string;
             quantity: number;
+            sku: string | null;
             originalUnitPriceSet: { shopMoney: { amount: string } };
             variant: { title: string; sku: string | null } | null;
           };
@@ -799,7 +801,7 @@ export async function fetchOrderDetail(numericId: string): Promise<OrderDetail> 
         unitPrice,
         lineTotal,
         variantTitle,
-        sku: li.variant?.sku ?? null,
+        sku: li.sku ?? li.variant?.sku ?? null,
       };
     }),
     fulfillments: node.fulfillments.map((f) => {
