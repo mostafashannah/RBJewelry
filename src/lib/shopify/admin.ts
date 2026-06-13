@@ -299,7 +299,7 @@ type OrderNode = {
   totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
   totalShippingPriceSet: { shopMoney: { amount: string } } | null;
   shippingAddress: { firstName: string; lastName: string; phone: string } | null;
-  lineItems: { edges: { node: { title: string; quantity: number; variant: { title: string; sku: string | null } | null } }[] };
+  lineItems: { edges: { node: { title: string; quantity: number; sku: string | null; variant: { title: string; sku: string | null } | null } }[] };
   fulfillments: { status: string; trackingInfo: { number: string; url: string }[] }[];
 };
 
@@ -309,7 +309,7 @@ const ORDER_FIELDS = `
   totalPriceSet { shopMoney { amount currencyCode } }
   totalShippingPriceSet { shopMoney { amount } }
   shippingAddress { firstName lastName phone }
-  lineItems(first: 20) { edges { node { title quantity variant { title sku } } } }
+  lineItems(first: 20) { edges { node { title quantity sku variant { title sku } } } }
   fulfillments(first: 5) { status trackingInfo { number url } }
 `;
 
@@ -323,7 +323,7 @@ async function upsertOrderNode(node: OrderNode) {
   const status = `${payment} / ${fulfillment ?? "UNFULFILLED"}`;
 
   const shippingPrice = parseFloat(node.totalShippingPriceSet?.shopMoney?.amount ?? "0") || 0;
-  const lineItemsJson = { customerName, items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity, variantTitle: li.variant?.title && li.variant.title !== "Default Title" ? li.variant.title : undefined, sku: li.variant?.sku ?? undefined })) };
+  const lineItemsJson = { customerName, items: node.lineItems.edges.map(({ node: li }) => ({ title: li.title, quantity: li.quantity, variantTitle: li.variant?.title && li.variant.title !== "Default Title" ? li.variant.title : undefined, sku: li.sku ?? li.variant?.sku ?? undefined })) };
 
   await db.shopifyOrderCache.upsert({
     where: { id: node.id },

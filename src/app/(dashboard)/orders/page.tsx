@@ -619,7 +619,16 @@ export default function OrdersPage() {
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${paymentColor[payment] ?? "bg-zinc-100 text-zinc-500"}`}>{payment}</span>
                   </div>
                   <p className="text-sm font-medium text-zinc-700">{meta?.customerName ?? o.customerEmail ?? "—"}</p>
-                  {itemsStr && <p className="text-xs text-zinc-400 mt-0.5 truncate">{itemsStr}</p>}
+                  {items.length > 0 && (
+                    <div className="mt-0.5 space-y-0.5">
+                      {items.map((item, idx) => (
+                        <div key={idx}>
+                          <p className="text-xs text-zinc-400 truncate">{item.quantity}× {item.title}{item.variantTitle ? ` (${item.variantTitle})` : ""}</p>
+                          {item.sku && <p className="text-[10px] text-zinc-300">SKU: {item.sku}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-sm font-semibold text-zinc-900">{o.totalPrice.toLocaleString()} {o.currency}</span>
                     <span className="text-xs text-zinc-400">{format(new Date(o.createdAt), "MMM d, yyyy")}</span>
@@ -705,7 +714,12 @@ export default function OrdersPage() {
                         {o.customerPhone && <p className="text-[10px] text-zinc-400">{o.customerPhone}</p>}
                       </td>
                       <td className="px-4 py-3 text-zinc-500 text-xs max-w-[180px]">
-                        <p className="truncate">{itemsStr}</p>
+                        {items.map((item, idx) => (
+                          <div key={idx}>
+                            <p className="truncate">{item.quantity}× {item.title}{item.variantTitle ? ` (${item.variantTitle})` : ""}</p>
+                            {item.sku && <p className="text-[10px] text-zinc-300 truncate">SKU: {item.sku}</p>}
+                          </div>
+                        ))}
                       </td>
                       <td className="px-4 py-3 font-medium text-zinc-900 whitespace-nowrap">{o.totalPrice.toLocaleString()} {o.currency}</td>
                       <td className="px-4 py-3">
