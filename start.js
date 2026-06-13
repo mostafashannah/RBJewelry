@@ -71,6 +71,8 @@ try {
 const app = next({ dev: false, hostname: "0.0.0.0", port });
 const handle = app.getRequestHandler();
 
+const { exec } = require("child_process");
+
 app.prepare().then(() => {
   createServer(async (req, res) => {
     try {
@@ -83,5 +85,14 @@ app.prepare().then(() => {
     }
   }).listen(port, () => {
     console.log(`> RB Jewelry ready on port ${port}`);
+
+    // Seed SOLD inventory items once from Shopify paid orders (auto-skips if already done)
+    setTimeout(() => {
+      exec("node scripts/rebuild-inventory.mjs", { cwd: __dirname, env: process.env }, (err, stdout, stderr) => {
+        if (stdout) console.log(stdout.trim());
+        if (stderr) console.error(stderr.trim());
+        if (err && err.code !== 0) console.error("> Inventory seed failed:", err.message);
+      });
+    }, 5000);
   });
 });
