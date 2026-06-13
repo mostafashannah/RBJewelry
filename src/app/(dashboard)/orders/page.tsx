@@ -1,7 +1,8 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { format } from "date-fns";
-import { RefreshCw, PackageSearch, CheckCircle2, XCircle, AlertCircle, Bookmark } from "lucide-react";
+import { RefreshCw, PackageSearch, CheckCircle2, XCircle, AlertCircle, Bookmark, X } from "lucide-react";
+import type { OrderDetail } from "@/lib/shopify/admin";
 
 interface Order {
   id: string;
@@ -107,6 +108,317 @@ function AvailBadge({ r, held, onHold }: { r: AvailResult; held?: boolean; onHol
   );
 }
 
+function formatPrice(amount: string | number, currency: string): string {
+  const n = typeof amount === "string" ? parseFloat(amount) : amount;
+  if (isNaN(n)) return `0 ${currency}`;
+  // Show as integer when the decimal part is .00
+  const formatted = n % 1 === 0 ? n.toLocaleString() : n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${formatted} ${currency}`;
+}
+
+function OrderDetailModal({ numericId, onClose }: { numericId: string; onClose: () => void }) {
+  const [detail, setDetail] = useState<OrderDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(true);
+  const [detailError, setDetailError] = useState("");
+
+  useEffect(() => {
+    setDetailLoading(true);
+    setDetailError("");
+    fetch(`/api/shopify/orders/${numericId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) setDetailError(data.error);
+        else setDetail(data.order);
+      })
+      .catch(() => setDetailError("Failed to load order details."))
+      .finally(() => setDetailLoading(false));
+  }, [numericId]);
+
+  // ESC key closes modal
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  const hasContactInfo = detail && (detail.email || detail.phone || detail.shippingAddress);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-t-2xl md:rounded-2xl w-full md:max-w-2xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Sticky header */}
+        <div className="sticky top-0 bg-white border-b border-zinc-100 px-6 py-4 flex items-start justify-between rounded-t-2xl md:rounded-t-2xl z-10">
+          <div>
+            {detail ? (
+              <>
+                <h2 className="text-lg font-semibold text-zinc-900">{detail.name}</h2>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  {format(new Date(detail.createdAt), "MMM d, yyyy · h:mm a")}
+                </p>
+              </>
+            ) : detailLoading ? (
+              <div className="h-6 w-24 bg-zinc-100 rounded animate-pulse" />
+            ) : (
+              <h2 className="text-lg font-semibold text-zinc-900">Order</h2>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-400 hover:text-zinc-700 transition-colors"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-6 pb-8 pt-4">
+          {detailLoading && (
+            <div className="flex items-center justify-center h-40">
+              <RefreshCw size={18} className="text-zinc-300 animate-spin" />
+            </div>
+          )}
+
+          {detailError && (
+            <div className="bg-red-50 text-red-600 rounded-xl px-4 py-3 text-sm">
+              {detailError}
+            </div>
+          )}
+
+          {detail && (
+            <div className="space-y-0">
+              {/* Status badges */}
+              <div className="flex items-center gap-2 flex-wrap mb-4">
+                <span className={`text-[11px] px-2.5 py-1 rounded-full font-medium ${paymentColor[detail.financialStatus] ?? "bg-zinc-100 text-zinc-500"}`}>
+                  {detail.financialStatus}
+                </span>
+                {detail.fulfillmentStatus && (
+                  <span className={`text-[11px] px-2.5 py-1 rounded-full font-medium ${
+                    detail.fulfillmentStatus.includes("FULFILLED") && !detail.fulfillmentStatus.includes("UNFULFILLED")
+                      ? "bg-blue-50 text-blue-700"
+                      : "bg-zinc-100 text-zinc-500"
+                  }`}>
+                    {detail.fulfillmentStatus}
+                  </span>
+                )}
+                {detail.tags.length > 0 && detail.tags.map((tag) => (
+                  <span key={tag} className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+
+              {/* Customer / Shipping */}
+              {hasContactInfo && (
+                <div className="border-t border-zinc-100 pt-4 mt-4">
+                  <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Customer</p>
+                  <div className="space-y-1">
+                    {detail.shippingAddress?.name && (
+                      <p className="text-sm font-medium text-zinc-800">{detail.shippingAddress.name}</p>
+                    )}
+                    {detail.email && (
+                      <a href={`mailto:${detail.email}`} className="block text-sm text-blue-600 hover:underline">
+                        {detail.email}
+                      </a>
+                    )}
+                    {detail.phone && (
+                      <a href={`tel:${detail.phone}`} className="block text-sm text-zinc-600 hover:underline">
+                        {detail.phone}
+                      </a>
+                    )}
+                    {detail.shippingAddress && (
+                      <div className="text-xs text-zinc-400 mt-1 space-y-0.5">
+                        {detail.shippingAddress.address1 && <p>{detail.shippingAddress.address1}</p>}
+                        {detail.shippingAddress.address2 && <p>{detail.shippingAddress.address2}</p>}
+                        {(detail.shippingAddress.city || detail.shippingAddress.province || detail.shippingAddress.zip) && (
+                          <p>
+                            {[detail.shippingAddress.city, detail.shippingAddress.province, detail.shippingAddress.zip]
+                              .filter(Boolean)
+                              .join(", ")}
+                          </p>
+                        )}
+                        {detail.shippingAddress.country && <p>{detail.shippingAddress.country}</p>}
+                        {detail.shippingAddress.phone && (
+                          <a href={`tel:${detail.shippingAddress.phone}`} className="hover:underline text-zinc-500">
+                            {detail.shippingAddress.phone}
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Line Items */}
+              {detail.lineItems.length > 0 && (
+                <div className="border-t border-zinc-100 pt-4 mt-4">
+                  <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Items</p>
+                  <div className="space-y-2">
+                    {detail.lineItems.map((item, i) => (
+                      <div key={i} className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="text-sm text-zinc-800 font-medium leading-snug">{item.title}</p>
+                          {item.variantTitle && (
+                            <p className="text-xs text-zinc-400">{item.variantTitle}</p>
+                          )}
+                          {item.sku && (
+                            <p className="text-[10px] text-zinc-300">SKU: {item.sku}</p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-sm text-zinc-700">
+                            {item.quantity} × {formatPrice(item.unitPrice, detail.currency)}
+                          </p>
+                          {item.quantity > 1 && (
+                            <p className="text-xs text-zinc-400">= {formatPrice(item.lineTotal, detail.currency)}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Order Totals */}
+              <div className="border-t border-zinc-100 pt-4 mt-4">
+                <div className="space-y-1.5 text-sm">
+                  <div className="flex justify-between text-zinc-500">
+                    <span>Subtotal</span>
+                    <span>{formatPrice(detail.subtotal, detail.currency)}</span>
+                  </div>
+                  {parseFloat(detail.shipping) > 0 && (
+                    <div className="flex justify-between text-zinc-500">
+                      <span>Shipping</span>
+                      <span>{formatPrice(detail.shipping, detail.currency)}</span>
+                    </div>
+                  )}
+                  {parseFloat(detail.discounts) > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span>Discounts</span>
+                      <span>−{formatPrice(detail.discounts, detail.currency)}</span>
+                    </div>
+                  )}
+                  {parseFloat(detail.tax) > 0 && (
+                    <div className="flex justify-between text-zinc-500">
+                      <span>Tax</span>
+                      <span>{formatPrice(detail.tax, detail.currency)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-semibold text-zinc-900 pt-1 border-t border-zinc-100">
+                    <span>Total</span>
+                    <span>{formatPrice(detail.total, detail.currency)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment / Transactions */}
+              {detail.transactions.length > 0 && (
+                <div className="border-t border-zinc-100 pt-4 mt-4">
+                  <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Payment</p>
+                  <div className="space-y-1.5">
+                    {detail.transactions.map((t, i) => (
+                      <div key={i} className="flex items-center justify-between text-sm">
+                        <span className="text-zinc-600 capitalize">{t.gateway.replace(/_/g, " ")}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                            t.status === "SUCCESS" ? "bg-green-50 text-green-700" : "bg-zinc-100 text-zinc-500"
+                          }`}>
+                            {t.status}
+                          </span>
+                          <span className="text-zinc-700">{formatPrice(t.amount, detail.currency)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Fulfillments */}
+              {detail.fulfillments.length > 0 && (
+                <div className="border-t border-zinc-100 pt-4 mt-4">
+                  <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Fulfillment</p>
+                  <div className="space-y-2">
+                    {detail.fulfillments.map((f, i) => (
+                      <div key={i} className="text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                            f.status === "SUCCESS" || f.status === "FULFILLED"
+                              ? "bg-blue-50 text-blue-700"
+                              : "bg-zinc-100 text-zinc-500"
+                          }`}>
+                            {f.status}
+                          </span>
+                          {f.company && <span className="text-xs text-zinc-400">{f.company}</span>}
+                        </div>
+                        {f.trackingNumber && (
+                          <div className="mt-1">
+                            {f.trackingUrl ? (
+                              <a
+                                href={f.trackingUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs text-blue-600 hover:underline"
+                              >
+                                Track: {f.trackingNumber}
+                              </a>
+                            ) : (
+                              <span className="text-xs text-zinc-500">{f.trackingNumber}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Discount codes */}
+              {detail.discountCodes.length > 0 && (
+                <div className="border-t border-zinc-100 pt-4 mt-4">
+                  <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Discount Codes</p>
+                  <div className="flex flex-wrap gap-2">
+                    {detail.discountCodes.map((d, i) => (
+                      <span key={i} className="text-xs font-mono bg-zinc-50 border border-zinc-200 rounded-lg px-2.5 py-1 text-zinc-700">
+                        {d.code}
+                        {parseFloat(d.amount) > 0 && (
+                          <span className="text-zinc-400 ml-1.5">
+                            {d.type === "PERCENTAGE" ? `${d.amount}%` : formatPrice(d.amount, detail.currency)} off
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Note */}
+              {detail.note && (
+                <div className="border-t border-zinc-100 pt-4 mt-4">
+                  <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Note</p>
+                  <p className="text-sm text-zinc-500 bg-zinc-50 rounded-xl px-4 py-3 leading-relaxed">
+                    {detail.note}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,17 +430,20 @@ export default function OrdersPage() {
   const [pullY, setPullY] = useState(0);
   const startYRef = useRef(0);
 
-  const load = async () => {
+  // Order detail modal state
+  const [selectedOrderNumericId, setSelectedOrderNumericId] = useState<string | null>(null);
+
+  const load = useCallback(async (): Promise<Order[]> => {
     setLoading(true);
     const res = await fetch("/api/shopify/orders");
     const data = await res.json();
-    setOrders(data.orders ?? []);
+    const fetched: Order[] = data.orders ?? [];
+    setOrders(fetched);
     setLoading(false);
-  };
+    return fetched;
+  }, []);
 
-  useEffect(() => { load(); }, []);
-
-  const sync = async () => {
+  const sync = useCallback(async () => {
     setSyncing(true);
     setSyncMsg("");
     const res = await fetch("/api/shopify/sync", { method: "POST" });
@@ -136,6 +451,20 @@ export default function OrdersPage() {
     setSyncMsg(data.ok ? "Synced from Shopify" : (data.error ?? "Sync failed"));
     if (data.ok) await load();
     setSyncing(false);
+  }, [load]);
+
+  useEffect(() => {
+    load().then((fetched) => {
+      if (fetched.length === 0) sync();
+    });
+  }, [load, sync]);
+
+  const openDetail = (numericId: string) => {
+    setSelectedOrderNumericId(numericId);
+  };
+
+  const closeDetail = () => {
+    setSelectedOrderNumericId(null);
   };
 
   const checkAvailability = async (orderId: string, items: { title: string; quantity: number; variantTitle?: string; sku?: string }[]) => {
@@ -283,8 +612,13 @@ export default function OrdersPage() {
               const items = meta?.items ?? [];
               const itemsStr = items.map(i => `${i.quantity}× ${i.title}${i.variantTitle ? ` (${i.variantTitle})` : ""}`).join(", ");
               const av = avail[o.id];
+              const numericId = o.id.replace("gid://shopify/Order/", "");
               return (
-                <div key={o.id} className="bg-white border border-zinc-100 rounded-xl p-4">
+                <div
+                  key={o.id}
+                  className="bg-white border border-zinc-100 rounded-xl p-4 cursor-pointer hover:border-zinc-200 hover:shadow-sm transition-all"
+                  onClick={() => openDetail(numericId)}
+                >
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="font-semibold text-zinc-900">#{o.orderNumber}</span>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${paymentColor[payment] ?? "bg-zinc-100 text-zinc-500"}`}>{payment}</span>
@@ -297,6 +631,7 @@ export default function OrdersPage() {
                   </div>
                   {o.trackingNumber && (
                     <a href={o.trackingUrl ?? "#"} target="_blank" rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
                       className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline">
                       Track: {o.trackingNumber}
                     </a>
@@ -308,10 +643,10 @@ export default function OrdersPage() {
                   )}
                   {/* Check Availability */}
                   {items.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-zinc-50">
+                    <div className="mt-3 pt-3 border-t border-zinc-50" onClick={(e) => e.stopPropagation()}>
                       {!av ? (
                         <button
-                          onClick={() => checkAvailability(o.id, items)}
+                          onClick={(e) => { e.stopPropagation(); checkAvailability(o.id, items); }}
                           className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-800 border border-zinc-200 rounded-lg px-2.5 py-1.5 hover:bg-zinc-50 transition-colors">
                           <PackageSearch size={12} /> Check Inventory
                         </button>
@@ -333,7 +668,7 @@ export default function OrdersPage() {
                               </div>
                             );
                           })}
-                          <button onClick={() => setAvail((p) => { const n = { ...p }; delete n[o.id]; return n; })}
+                          <button onClick={(e) => { e.stopPropagation(); setAvail((p) => { const n = { ...p }; delete n[o.id]; return n; }); }}
                             className="text-[10px] text-zinc-400 underline mt-0.5">clear</button>
                         </div>
                       )}
@@ -362,8 +697,13 @@ export default function OrdersPage() {
                   const items = meta?.items ?? [];
                   const itemsStr = items.map(i => `${i.quantity}× ${i.title}${i.variantTitle ? ` (${i.variantTitle})` : ""}`).join(", ");
                   const av = avail[o.id];
+                  const numericId = o.id.replace("gid://shopify/Order/", "");
                   return (
-                    <tr key={o.id} className="border-b border-zinc-50 hover:bg-zinc-50 transition-colors">
+                    <tr
+                      key={o.id}
+                      className="border-b border-zinc-50 hover:bg-zinc-50 transition-colors cursor-pointer"
+                      onClick={() => openDetail(numericId)}
+                    >
                       <td className="px-4 py-3 font-medium text-zinc-900">#{o.orderNumber}</td>
                       <td className="px-4 py-3 text-zinc-700 max-w-[140px]">
                         <p className="truncate">{meta?.customerName ?? o.customerEmail ?? "—"}</p>
@@ -376,16 +716,16 @@ export default function OrdersPage() {
                       <td className="px-4 py-3">
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${paymentColor[payment] ?? "bg-zinc-100 text-zinc-500"}`}>{payment}</span>
                       </td>
-                      <td className="px-4 py-3 text-xs">
+                      <td className="px-4 py-3 text-xs" onClick={(e) => e.stopPropagation()}>
                         {o.trackingNumber ? (
                           <a href={o.trackingUrl ?? "#"} target="_blank" rel="noreferrer"
                             className="text-blue-600 hover:underline">{o.trackingNumber}</a>
                         ) : <span className="text-zinc-300">—</span>}
                       </td>
                       <td className="px-4 py-3 text-zinc-400 text-xs whitespace-nowrap">{format(new Date(o.createdAt), "MMM d, yyyy")}</td>
-                      <td className="px-4 py-3 text-xs min-w-[160px]">
+                      <td className="px-4 py-3 text-xs min-w-[160px]" onClick={(e) => e.stopPropagation()}>
                         {items.length === 0 ? null : !av ? (
-                          <button onClick={() => checkAvailability(o.id, items)}
+                          <button onClick={(e) => { e.stopPropagation(); checkAvailability(o.id, items); }}
                             className="flex items-center gap-1 text-zinc-500 hover:text-zinc-800 border border-zinc-200 rounded-lg px-2 py-1 hover:bg-zinc-50 transition-colors whitespace-nowrap">
                             <PackageSearch size={11} /> Check Stock
                           </button>
@@ -405,7 +745,7 @@ export default function OrdersPage() {
                                 </div>
                               );
                             })}
-                            <button onClick={() => setAvail((p) => { const n = { ...p }; delete n[o.id]; return n; })}
+                            <button onClick={(e) => { e.stopPropagation(); setAvail((p) => { const n = { ...p }; delete n[o.id]; return n; }); }}
                               className="text-[10px] text-zinc-400 underline">clear</button>
                           </div>
                         )}
@@ -417,6 +757,14 @@ export default function OrdersPage() {
             </table>
           </div>
         </>
+      )}
+
+      {/* Order Detail Modal */}
+      {selectedOrderNumericId !== null && (
+        <OrderDetailModal
+          numericId={selectedOrderNumericId}
+          onClose={closeDetail}
+        />
       )}
     </div>
   );
