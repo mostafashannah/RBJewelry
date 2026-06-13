@@ -424,6 +424,7 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [pullY, setPullY] = useState(0);
   const startYRef = useRef(0);
+  const [skuInventory, setSkuInventory] = useState<Record<string, AvailResult>>({});
 
   // Order detail modal state
   const [selectedOrderNumericId, setSelectedOrderNumericId] = useState<string | null>(null);
@@ -438,21 +439,45 @@ export default function OrdersPage() {
     return fetched;
   }, []);
 
+  const autoCheckSKUs = useCallback(async (orderList: Order[]) => {
+    const seenSkus = new Set<string>();
+    const skuItems: Array<{ title: string; quantity: number; variantTitle?: string; sku: string }> = [];
+    for (const o of orderList) {
+      for (const item of (o.lineItemsJson?.items ?? [])) {
+        if (item.sku && !seenSkus.has(item.sku)) {
+          seenSkus.add(item.sku);
+          skuItems.push({ title: item.title, quantity: 1, variantTitle: item.variantTitle, sku: item.sku });
+        }
+      }
+    }
+    if (skuItems.length === 0) return;
+    const res = await fetch("/api/inventory/check-availability", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: skuItems }),
+    });
+    const data = await res.json();
+    const map: Record<string, AvailResult> = {};
+    (data.results as AvailResult[]).forEach((r: AvailResult, i: number) => { map[skuItems[i].sku] = r; });
+    setSkuInventory(map);
+  }, []);
+
   const sync = useCallback(async () => {
     setSyncing(true);
     setSyncMsg("");
     const res = await fetch("/api/shopify/sync", { method: "POST" });
     const data = await res.json();
     setSyncMsg(data.ok ? "Synced from Shopify" : (data.error ?? "Sync failed"));
-    if (data.ok) await load();
+    if (data.ok) { const fetched = await load(); autoCheckSKUs(fetched); }
     setSyncing(false);
-  }, [load]);
+  }, [load, autoCheckSKUs]);
 
   useEffect(() => {
     load().then((fetched) => {
       if (fetched.length === 0) sync();
+      else autoCheckSKUs(fetched);
     });
-  }, [load, sync]);
+  }, [load, sync, autoCheckSKUs]);
 
   const openDetail = (numericId: string) => {
     setSelectedOrderNumericId(numericId);
@@ -619,13 +644,23 @@ export default function OrdersPage() {
                   </div>
                   <p className="text-sm font-medium text-zinc-700">{meta?.customerName ?? o.customerEmail ?? "—"}</p>
                   {items.length > 0 && (
-                    <div className="mt-0.5 space-y-0.5">
-                      {items.map((item, idx) => (
-                        <div key={idx}>
-                          <p className="text-xs text-zinc-400 truncate">{item.quantity}× {item.title}{item.variantTitle ? ` (${item.variantTitle})` : ""}</p>
-                          {item.sku && <p className="text-[10px] text-zinc-300">SKU: {item.sku}</p>}
-                        </div>
-                      ))}
+                    <div className="mt-0.5 space-y-1">
+                      {items.map((item, idx) => {
+                        const skuResult = item.sku ? skuInventory[item.sku] : undefined;
+                        const hKey = `${o.orderNumber}:${item.title}:${item.variantTitle ?? ""}`;
+                        return (
+                          <div key={idx}>
+                            <p className="text-xs text-zinc-400 truncate">{item.quantity}× {item.title}{item.variantTitle ? ` (${item.variantTitle})` : ""}</p>
+                            {item.sku && <p className="text-[10px] text-zinc-300">SKU: {item.sku}</p>}
+                            {skuResult && (
+                              <div onClick={(e) => e.stopPropagation()}>
+                                <AvailBadge r={skuResult} held={heldItems[hKey]}
+                                  onHold={() => holdItem(o.orderNumber, item.title, item.variantTitle, item.sku)} />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                   <div className="flex items-center justify-between mt-2">
@@ -644,8 +679,8 @@ export default function OrdersPage() {
                       {fulfillment}
                     </span>
                   )}
-                  {/* Check Availability */}
-                  {items.length > 0 && (
+                  {/* Check Availability - only for orders with items lacking SKU coverage */}
+                  {items.some(item => !item.sku || !skuInventory[item.sku]) && (
                     <div className="mt-3 pt-3 border-t border-zinc-50" onClick={(e) => e.stopPropagation()}>
                       {!av ? (
                         <button
@@ -712,12 +747,22 @@ export default function OrdersPage() {
                         {o.customerPhone && <p className="text-[10px] text-zinc-400">{o.customerPhone}</p>}
                       </td>
                       <td className="px-4 py-3 text-zinc-500 text-xs max-w-[180px]">
-                        {items.map((item, idx) => (
-                          <div key={idx}>
-                            <p className="truncate">{item.quantity}× {item.title}{item.variantTitle ? ` (${item.variantTitle})` : ""}</p>
-                            {item.sku && <p className="text-[10px] text-zinc-300 truncate">SKU: {item.sku}</p>}
-                          </div>
-                        ))}
+                        {items.map((item, idx) => {
+                          const skuResult = item.sku ? skuInventory[item.sku] : undefined;
+                          const hKey = `${o.orderNumber}:${item.title}:${item.variantTitle ?? ""}`;
+                          return (
+                            <div key={idx}>
+                              <p className="truncate">{item.quantity}× {item.title}{item.variantTitle ? ` (${item.variantTitle})` : ""}</p>
+                              {item.sku && <p className="text-[10px] text-zinc-300 truncate">SKU: {item.sku}</p>}
+                              {skuResult && (
+                                <div onClick={(e) => e.stopPropagation()}>
+                                  <AvailBadge r={skuResult} held={heldItems[hKey]}
+                                    onHold={() => holdItem(o.orderNumber, item.title, item.variantTitle, item.sku)} />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </td>
                       <td className="px-4 py-3 font-medium text-zinc-900 whitespace-nowrap">{o.totalPrice.toLocaleString()} {o.currency}</td>
                       <td className="px-4 py-3">
@@ -731,7 +776,7 @@ export default function OrdersPage() {
                       </td>
                       <td className="px-4 py-3 text-zinc-400 text-xs whitespace-nowrap">{format(new Date(o.createdAt), "MMM d, yyyy")}</td>
                       <td className="px-4 py-3 text-xs min-w-[160px]" onClick={(e) => e.stopPropagation()}>
-                        {items.length === 0 ? null : !av ? (
+                        {items.length === 0 || items.every(item => item.sku && skuInventory[item.sku]) ? null : !av ? (
                           <button onClick={(e) => { e.stopPropagation(); checkAvailability(o.id, items); }}
                             className="flex items-center gap-1 text-zinc-500 hover:text-zinc-800 border border-zinc-200 rounded-lg px-2 py-1 hover:bg-zinc-50 transition-colors whitespace-nowrap">
                             <PackageSearch size={11} /> Check Stock
