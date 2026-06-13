@@ -605,7 +605,6 @@ export default function OrdersPage() {
               const fulfillment = parts[1] ?? "";
               const meta = o.lineItemsJson;
               const items = meta?.items ?? [];
-              const itemsStr = items.map(i => `${i.quantity}× ${i.title}${i.variantTitle ? ` (${i.variantTitle})` : ""}`).join(", ");
               const av = avail[o.id];
               const numericId = o.id.replace("gid://shopify/Order/", "");
               return (
@@ -699,7 +698,6 @@ export default function OrdersPage() {
                   const payment = parts[0] ?? o.status;
                   const meta = o.lineItemsJson;
                   const items = meta?.items ?? [];
-                  const itemsStr = items.map(i => `${i.quantity}× ${i.title}${i.variantTitle ? ` (${i.variantTitle})` : ""}`).join(", ");
                   const av = avail[o.id];
                   const numericId = o.id.replace("gid://shopify/Order/", "");
                   return (
