@@ -603,6 +603,230 @@ export async function setInventoryLevel(inventoryItemId: string, locationId: str
   });
 }
 
+// ─── Order Detail ─────────────────────────────────────────────────────────────
+
+export interface OrderDetail {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  createdAt: string;
+  note: string | null;
+  tags: string[];
+  financialStatus: string;
+  fulfillmentStatus: string | null;
+  total: string;
+  subtotal: string;
+  shipping: string;
+  discounts: string;
+  tax: string;
+  currency: string;
+  shippingAddress: {
+    name: string;
+    address1: string | null;
+    address2: string | null;
+    city: string | null;
+    province: string | null;
+    country: string | null;
+    zip: string | null;
+    phone: string | null;
+  } | null;
+  lineItems: {
+    title: string;
+    quantity: number;
+    unitPrice: string;
+    lineTotal: string;
+    variantTitle: string | null;
+    sku: string | null;
+  }[];
+  fulfillments: {
+    status: string;
+    trackingNumber: string | null;
+    trackingUrl: string | null;
+    company: string | null;
+  }[];
+  transactions: {
+    gateway: string;
+    kind: string;
+    status: string;
+    amount: string;
+  }[];
+  discountCodes: {
+    code: string;
+    amount: string;
+    type: string;
+  }[];
+}
+
+const ORDER_DETAIL_QUERY = `
+  query getOrderDetail($id: ID!) {
+    order(id: $id) {
+      id
+      name
+      email
+      phone
+      createdAt
+      note
+      tags
+      displayFinancialStatus
+      displayFulfillmentStatus
+      totalPriceSet { shopMoney { amount currencyCode } }
+      subtotalPriceSet { shopMoney { amount } }
+      totalShippingPriceSet { shopMoney { amount } }
+      totalDiscountsSet { shopMoney { amount } }
+      totalTaxSet { shopMoney { amount } }
+      shippingAddress {
+        firstName lastName address1 address2 city province country zip phone
+      }
+      customer { email phone firstName lastName }
+      lineItems(first: 50) {
+        edges {
+          node {
+            title
+            quantity
+            originalUnitPriceSet { shopMoney { amount } }
+            variant { title sku }
+          }
+        }
+      }
+      fulfillments(first: 5) {
+        status
+        updatedAt
+        trackingInfo { number url company }
+      }
+      transactions(first: 10) {
+        gateway
+        kind
+        status
+        amountSet { shopMoney { amount } }
+      }
+      discountCodes { code amount type }
+    }
+  }
+`;
+
+export async function fetchOrderDetail(numericId: string): Promise<OrderDetail> {
+  const gid = `gid://shopify/Order/${numericId}`;
+
+  const data = await shopifyGraphQL<{
+    order: {
+      id: string;
+      name: string;
+      email: string | null;
+      phone: string | null;
+      createdAt: string;
+      note: string | null;
+      tags: string[];
+      displayFinancialStatus: string;
+      displayFulfillmentStatus: string | null;
+      totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+      subtotalPriceSet: { shopMoney: { amount: string } } | null;
+      totalShippingPriceSet: { shopMoney: { amount: string } } | null;
+      totalDiscountsSet: { shopMoney: { amount: string } } | null;
+      totalTaxSet: { shopMoney: { amount: string } } | null;
+      shippingAddress: {
+        firstName: string; lastName: string;
+        address1: string | null; address2: string | null;
+        city: string | null; province: string | null;
+        country: string | null; zip: string | null; phone: string | null;
+      } | null;
+      customer: { email: string | null; phone: string | null; firstName: string; lastName: string } | null;
+      lineItems: {
+        edges: {
+          node: {
+            title: string;
+            quantity: number;
+            originalUnitPriceSet: { shopMoney: { amount: string } };
+            variant: { title: string; sku: string | null } | null;
+          };
+        }[];
+      };
+      fulfillments: {
+        status: string;
+        updatedAt: string;
+        trackingInfo: { number: string; url: string; company: string | null }[];
+      }[];
+      transactions: {
+        gateway: string;
+        kind: string;
+        status: string;
+        amountSet: { shopMoney: { amount: string } };
+      }[];
+      discountCodes: { code: string; amount: string; type: string }[];
+    } | null;
+  }>(ORDER_DETAIL_QUERY, { id: gid });
+
+  const node = data.order;
+  if (!node) throw new Error(`Order ${numericId} not found`);
+
+  const addr = node.shippingAddress;
+  const currency = node.totalPriceSet.shopMoney.currencyCode;
+
+  return {
+    id: node.id,
+    name: node.name,
+    email: node.email ?? node.customer?.email ?? null,
+    phone: node.phone ?? node.customer?.phone ?? null,
+    createdAt: node.createdAt,
+    note: node.note ?? null,
+    tags: node.tags,
+    financialStatus: node.displayFinancialStatus,
+    fulfillmentStatus: node.displayFulfillmentStatus ?? null,
+    total: node.totalPriceSet.shopMoney.amount,
+    subtotal: node.subtotalPriceSet?.shopMoney.amount ?? "0",
+    shipping: node.totalShippingPriceSet?.shopMoney.amount ?? "0",
+    discounts: node.totalDiscountsSet?.shopMoney.amount ?? "0",
+    tax: node.totalTaxSet?.shopMoney.amount ?? "0",
+    currency,
+    shippingAddress: addr
+      ? {
+          name: `${addr.firstName} ${addr.lastName}`.trim(),
+          address1: addr.address1,
+          address2: addr.address2,
+          city: addr.city,
+          province: addr.province,
+          country: addr.country,
+          zip: addr.zip,
+          phone: addr.phone,
+        }
+      : null,
+    lineItems: node.lineItems.edges.map(({ node: li }) => {
+      const unitPrice = li.originalUnitPriceSet.shopMoney.amount;
+      const lineTotal = (parseFloat(unitPrice) * li.quantity).toFixed(2);
+      const variantTitle =
+        li.variant?.title && li.variant.title !== "Default Title"
+          ? li.variant.title
+          : null;
+      return {
+        title: li.title,
+        quantity: li.quantity,
+        unitPrice,
+        lineTotal,
+        variantTitle,
+        sku: li.variant?.sku ?? null,
+      };
+    }),
+    fulfillments: node.fulfillments.map((f) => {
+      const tracking = f.trackingInfo[0] ?? null;
+      return {
+        status: f.status,
+        trackingNumber: tracking?.number ?? null,
+        trackingUrl: tracking?.url ?? null,
+        company: tracking?.company ?? null,
+      };
+    }),
+    transactions: node.transactions
+      .filter((t) => t.kind === "SALE" || t.kind === "CAPTURE")
+      .map((t) => ({
+        gateway: t.gateway,
+        kind: t.kind,
+        status: t.status,
+        amount: t.amountSet.shopMoney.amount,
+      })),
+    discountCodes: node.discountCodes,
+  };
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ShopifyProduct {
