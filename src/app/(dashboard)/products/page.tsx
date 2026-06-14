@@ -45,6 +45,7 @@ export default function ProductsPage() {
   const [analyticsError, setAnalyticsError]     = useState(false);
   const [syncing, setSyncing]               = useState(false);
   const [syncMsg, setSyncMsg]               = useState("");
+  const [syncOk, setSyncOk]                 = useState(true);
   const [sortBy, setSortBy]                 = useState<SortBy>("default");
   const [dateRange, setDateRange]           = useState<DateRange>("all");
   const [pullY, setPullY]                   = useState(0);
@@ -76,18 +77,25 @@ export default function ProductsPage() {
   }, []);
 
   useEffect(() => { loadProducts(); }, [loadProducts]);
-  useEffect(() => { loadAnalytics(dateRange); }, [dateRange, loadAnalytics]);
+  useEffect(() => {
+    if (sortBy !== "default") loadAnalytics(dateRange);
+  }, [sortBy, dateRange, loadAnalytics]);
 
   const sync = async () => {
     setSyncing(true); setSyncMsg("");
     const res = await fetch("/api/shopify/sync", { method: "POST" });
     const data = await res.json();
     if (data.ok) {
+      setSyncOk(true);
       setSyncMsg("Synced!");
-      await Promise.all([loadProducts(), loadAnalytics(dateRange)]);
-    } else setSyncMsg(data.error ?? "Sync failed");
+      await Promise.all([loadProducts(), sortBy !== "default" ? loadAnalytics(dateRange) : Promise.resolve()]);
+    } else {
+      setSyncOk(false);
+      const raw = String(data.error ?? "");
+      setSyncMsg(raw.includes("401") || raw.includes("Invalid API") ? "Sync failed — invalid Shopify API token." : "Sync failed.");
+    }
     setSyncing(false);
-    setTimeout(() => setSyncMsg(""), 3000);
+    setTimeout(() => setSyncMsg(""), 6000);
   };
 
   // Pull to refresh
@@ -139,7 +147,7 @@ export default function ProductsPage() {
       </div>
 
       {syncMsg && (
-        <p className="text-xs text-green-600 bg-green-50 rounded-lg px-4 py-2 mb-4">{syncMsg}</p>
+        <p className={`text-xs rounded-lg px-4 py-2 mb-4 ${syncOk ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"}`}>{syncMsg}</p>
       )}
 
       {/* Sort + Date Range Controls */}
@@ -176,6 +184,9 @@ export default function ProductsPage() {
               </button>
             ))}
             {analyticsLoading && <RefreshCw size={11} className="text-zinc-300 animate-spin ml-1" />}
+            {!analyticsLoading && analyticsError && (
+              <span className="text-[10px] text-amber-500 ml-1">Analytics unavailable</span>
+            )}
           </div>
         )}
       </div>
