@@ -289,8 +289,8 @@ export default function FinancesPage() {
         {investments.length === 0 ? (
           <div className={`${cardCls} text-center py-6 text-sm text-zinc-400`}>No investments yet</div>
         ) : (
-          <div className={`${cardCls} overflow-hidden overflow-x-auto`}>
-            <table className="w-full text-sm min-w-[400px]">
+          <div className={`${cardCls} overflow-hidden`}>
+            <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-100">
                   {["Shareholder", "Amount", "Date", "Notes", ""].map((h) => (
@@ -306,7 +306,7 @@ export default function FinancesPage() {
                     <td className="px-4 py-3 font-medium text-zinc-900">{inv.name}</td>
                     <td className="px-4 py-3 font-semibold text-purple-600">{inv.amount.toLocaleString()} {inv.currency}</td>
                     <td className="px-4 py-3 text-zinc-400 text-xs">{format(new Date(inv.date), "MMM d, yyyy")}</td>
-                    <td className="px-4 py-3 text-zinc-500 text-xs">{inv.notes ?? "—"}</td>
+                    <td className="px-4 py-3 text-zinc-500 text-xs truncate max-w-[100px]">{inv.notes ?? "—"}</td>
                     <td className="px-4 py-3">
                       <button onClick={() => deleteInvestment(inv.id)} className="text-zinc-300 hover:text-red-400 transition-colors">
                         <Trash2 size={13} />
@@ -333,8 +333,8 @@ export default function FinancesPage() {
         ) : expenses.length === 0 ? (
           <p className="text-sm text-zinc-400 text-center py-10">No expenses for this period.</p>
         ) : (
-          <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden overflow-x-auto">
-            <table className="w-full text-sm min-w-[480px]">
+          <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-100">
                   {["Category", "Amount", "Description", "Date", ""].map((h) => (
@@ -347,7 +347,7 @@ export default function FinancesPage() {
                   <tr key={e.id} className="border-b border-zinc-50 hover:bg-zinc-50">
                     <td className="px-4 py-3 text-zinc-700">{e.category}</td>
                     <td className="px-4 py-3 font-medium text-zinc-900">{e.amount.toLocaleString()} {e.currency}</td>
-                    <td className="px-4 py-3 text-zinc-500">{e.description ?? "—"}</td>
+                    <td className="px-4 py-3 text-zinc-500 truncate max-w-[120px]">{e.description ?? "—"}</td>
                     <td className="px-4 py-3 text-zinc-400 text-xs">{format(new Date(e.date), "MMM d, yyyy")}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
