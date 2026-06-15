@@ -37,3 +37,31 @@ export async function POST(req: NextRequest) {
   });
   return NextResponse.json(expense, { status: 201 });
 }
+
+const patchSchema = z.object({
+  id: z.string(),
+  category: z.string().optional(),
+  amount: z.number().positive().optional(),
+  currency: z.string().optional(),
+  description: z.string().optional().nullable(),
+  date: z.string().datetime().optional(),
+});
+
+export async function PATCH(req: NextRequest) {
+  const body = await req.json();
+  const parsed = patchSchema.safeParse(body);
+  if (!parsed.success) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+  const { id, date, ...rest } = parsed.data;
+  const expense = await db.expense.update({
+    where: { id },
+    data: { ...rest, ...(date ? { date: new Date(date) } : {}) },
+  });
+  return NextResponse.json(expense);
+}
+
+export async function DELETE(req: NextRequest) {
+  const { id } = await req.json() as { id: string };
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  await db.expense.delete({ where: { id } });
+  return NextResponse.json({ ok: true });
+}

@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { format } from "date-fns";
-import { Plus, Download, TrendingUp, TrendingDown, Package, ShoppingBag, Users, Trash2 } from "lucide-react";
+import { Plus, Download, TrendingUp, TrendingDown, Package, ShoppingBag, Users, Trash2, Pencil } from "lucide-react";
 
 interface Expense {
   id: string; category: string; amount: number; currency: string;
@@ -36,6 +36,8 @@ export default function FinancesPage() {
   // Expense form
   const [showAddExp, setShowAddExp] = useState(false);
   const [expForm, setExpForm] = useState({ category: CATEGORIES[0], amount: "", description: "", date: format(new Date(), "yyyy-MM-dd") });
+  const [editingExp, setEditingExp] = useState<Expense | null>(null);
+  const [editExpForm, setEditExpForm] = useState({ category: CATEGORIES[0], amount: "", description: "", date: "" });
 
   // Investment form
   const [showAddInv, setShowAddInv] = useState(false);
@@ -78,6 +80,39 @@ export default function FinancesPage() {
     });
     setShowAddExp(false);
     setExpForm({ category: CATEGORIES[0], amount: "", description: "", date: format(new Date(), "yyyy-MM-dd") });
+    loadExpenses(); reloadSummary();
+  };
+
+  const deleteExpense = async (id: string) => {
+    await fetch("/api/finances/expenses", {
+      method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }),
+    });
+    loadExpenses(); reloadSummary();
+  };
+
+  const openEditExp = (e: Expense) => {
+    setEditingExp(e);
+    setEditExpForm({
+      category: e.category,
+      amount: String(e.amount),
+      description: e.description ?? "",
+      date: format(new Date(e.date), "yyyy-MM-dd"),
+    });
+  };
+
+  const saveEditExp = async () => {
+    if (!editingExp || !editExpForm.amount) return;
+    await fetch("/api/finances/expenses", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: editingExp.id,
+        category: editExpForm.category,
+        amount: parseFloat(editExpForm.amount),
+        description: editExpForm.description || null,
+        date: new Date(editExpForm.date).toISOString(),
+      }),
+    });
+    setEditingExp(null);
     loadExpenses(); reloadSummary();
   };
 
@@ -302,7 +337,7 @@ export default function FinancesPage() {
             <table className="w-full text-sm min-w-[480px]">
               <thead>
                 <tr className="border-b border-zinc-100">
-                  {["Category", "Amount", "Description", "Date"].map((h) => (
+                  {["Category", "Amount", "Description", "Date", ""].map((h) => (
                     <th key={h} className="text-left text-xs text-zinc-400 font-medium px-4 py-3">{h}</th>
                   ))}
                 </tr>
@@ -314,6 +349,16 @@ export default function FinancesPage() {
                     <td className="px-4 py-3 font-medium text-zinc-900">{e.amount.toLocaleString()} {e.currency}</td>
                     <td className="px-4 py-3 text-zinc-500">{e.description ?? "—"}</td>
                     <td className="px-4 py-3 text-zinc-400 text-xs">{format(new Date(e.date), "MMM d, yyyy")}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => openEditExp(e)} className="text-zinc-300 hover:text-zinc-500 transition-colors">
+                          <Pencil size={13} />
+                        </button>
+                        <button onClick={() => deleteExpense(e.id)} className="text-zinc-300 hover:text-red-400 transition-colors">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -349,6 +394,39 @@ export default function FinancesPage() {
               <div className="flex gap-2 pt-1">
                 <button onClick={() => setShowAddExp(false)} className="flex-1 border border-zinc-200 rounded-lg py-2 text-sm text-zinc-600 hover:bg-zinc-50">Cancel</button>
                 <button onClick={addExpense} className="flex-1 bg-zinc-900 text-white rounded-lg py-2 text-sm hover:bg-zinc-700">Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Expense Modal */}
+      {editingExp && (
+        <div className={modalCls} onClick={() => setEditingExp(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-sm font-semibold mb-4">Edit Expense</h2>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Category</label>
+                <select value={editExpForm.category} onChange={(e) => setEditExpForm({ ...editExpForm, category: e.target.value })} className={inputCls}>
+                  {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Amount (EGP)</label>
+                <input type="number" value={editExpForm.amount} onChange={(e) => setEditExpForm({ ...editExpForm, amount: e.target.value })} className={inputCls} placeholder="0" />
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Description</label>
+                <input value={editExpForm.description} onChange={(e) => setEditExpForm({ ...editExpForm, description: e.target.value })} className={inputCls} placeholder="Optional" />
+              </div>
+              <div>
+                <label className="text-xs text-zinc-500 mb-1 block">Date</label>
+                <input type="date" value={editExpForm.date} onChange={(e) => setEditExpForm({ ...editExpForm, date: e.target.value })} className={inputCls} />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setEditingExp(null)} className="flex-1 border border-zinc-200 rounded-lg py-2 text-sm text-zinc-600 hover:bg-zinc-50">Cancel</button>
+                <button onClick={saveEditExp} className="flex-1 bg-zinc-900 text-white rounded-lg py-2 text-sm hover:bg-zinc-700">Save</button>
               </div>
             </div>
           </div>
