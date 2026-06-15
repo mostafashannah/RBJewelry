@@ -334,22 +334,24 @@ export default function FinancesPage() {
           <p className="text-sm text-zinc-400 text-center py-10">No expenses for this period.</p>
         ) : (
           <div className="bg-white border border-zinc-100 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm table-fixed">
               <thead>
                 <tr className="border-b border-zinc-100">
-                  {["Category", "Amount", "Description", "Date", ""].map((h) => (
-                    <th key={h} className="text-left text-xs text-zinc-400 font-medium px-4 py-3">{h}</th>
-                  ))}
+                  <th className="text-left text-xs text-zinc-400 font-medium px-4 py-3 w-[22%]">Category</th>
+                  <th className="text-left text-xs text-zinc-400 font-medium px-4 py-3 w-[22%]">Amount</th>
+                  <th className="text-left text-xs text-zinc-400 font-medium px-4 py-3 hidden sm:table-cell">Description</th>
+                  <th className="text-left text-xs text-zinc-400 font-medium px-4 py-3 w-[22%]">Date</th>
+                  <th className="text-left text-xs text-zinc-400 font-medium px-4 py-3 w-[60px]"></th>
                 </tr>
               </thead>
               <tbody>
                 {expenses.map((e) => (
                   <tr key={e.id} className="border-b border-zinc-50 hover:bg-zinc-50">
-                    <td className="px-4 py-3 text-zinc-700">{e.category}</td>
-                    <td className="px-4 py-3 font-medium text-zinc-900">{e.amount.toLocaleString()} {e.currency}</td>
-                    <td className="px-4 py-3 text-zinc-500 truncate max-w-[120px]">{e.description ?? "—"}</td>
-                    <td className="px-4 py-3 text-zinc-400 text-xs">{format(new Date(e.date), "MMM d, yyyy")}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 text-zinc-700 truncate">{e.category}</td>
+                    <td className="px-4 py-3 font-medium text-zinc-900 truncate">{e.amount.toLocaleString()} {e.currency}</td>
+                    <td className="px-4 py-3 text-zinc-500 truncate hidden sm:table-cell">{e.description ?? "—"}</td>
+                    <td className="px-4 py-3 text-zinc-400 text-xs truncate">{format(new Date(e.date), "MMM d, yyyy")}</td>
+                    <td className="px-4 py-3 w-[60px]">
                       <div className="flex items-center gap-2">
                         <button onClick={() => openEditExp(e)} className="text-zinc-300 hover:text-zinc-500 transition-colors">
                           <Pencil size={13} />
