@@ -22,7 +22,7 @@ interface Summary {
 const CATEGORIES = ["Ad Spend", "Shipping", "Materials", "Operations", "Marketing", "Other"];
 
 const inputCls = "w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-400";
-const modalCls = "fixed inset-0 bg-black/20 flex items-center justify-center z-50 p-4";
+const modalCls = "fixed inset-0 w-screen h-screen overflow-y-auto bg-black/20 flex items-center justify-center z-50 p-4";
 const cardCls = "bg-white border border-zinc-100 rounded-xl p-4";
 
 export default function FinancesPage() {
