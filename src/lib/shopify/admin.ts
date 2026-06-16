@@ -697,7 +697,7 @@ const ORDER_DETAIL_QUERY = `
         status
         amountSet { shopMoney { amount } }
       }
-      discountCodes
+      discountCodes { code }
     }
   }
 `;
@@ -750,7 +750,7 @@ export async function fetchOrderDetail(numericId: string): Promise<OrderDetail> 
         status: string;
         amountSet: { shopMoney: { amount: string } };
       }[];
-      discountCodes: string[];
+      discountCodes: { code: string }[];
     } | null;
   }>(ORDER_DETAIL_QUERY, { id: gid });
 
@@ -821,7 +821,7 @@ export async function fetchOrderDetail(numericId: string): Promise<OrderDetail> 
         status: t.status,
         amount: t.amountSet.shopMoney.amount,
       })),
-    discountCodes: node.discountCodes,
+    discountCodes: node.discountCodes.map((dc) => dc.code),
   };
 }
 

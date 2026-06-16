@@ -111,11 +111,15 @@ export default function ProductsPage() {
     else { setPullY(0); setPulling(false); }
   };
 
+  const allViewsZero = Object.keys(analytics).length > 0 &&
+    Object.values(analytics).every((v) => v.views === 0);
+
   const sortedProducts = [...products].sort((a, b) => {
     if (sortBy === "best_selling") {
       return (analytics[b.id]?.orders ?? 0) - (analytics[a.id]?.orders ?? 0);
     }
     if (sortBy === "most_viewed") {
+      if (allViewsZero) return (analytics[b.id]?.orders ?? 0) - (analytics[a.id]?.orders ?? 0);
       return (analytics[b.id]?.views ?? 0) - (analytics[a.id]?.views ?? 0);
     }
     return 0;
@@ -186,6 +190,9 @@ export default function ProductsPage() {
             {analyticsLoading && <RefreshCw size={11} className="text-zinc-300 animate-spin ml-1" />}
             {!analyticsLoading && analyticsError && (
               <span className="text-[10px] text-amber-500 ml-1">Analytics unavailable</span>
+            )}
+            {!analyticsLoading && !analyticsError && sortBy === "most_viewed" && allViewsZero && (
+              <span className="text-[10px] text-zinc-400 ml-1">views unavailable — sorted by orders</span>
             )}
           </div>
         )}
