@@ -46,6 +46,11 @@ const paymentColor: Record<string, string> = {
 
 type StatusFilter = "all" | "unpaid" | "unfulfilled" | "paid" | "fulfilled" | "refunded" | "voided";
 
+function isPaidStatus(status: string): boolean {
+  const s = status.toUpperCase();
+  return s.includes("PAID") && !s.includes("REFUNDED");
+}
+
 function matchesFilter(status: string, f: StatusFilter) {
   const s = status.toUpperCase();
   if (f === "all") return true;
@@ -443,6 +448,7 @@ export default function OrdersPage() {
     const seenSkus = new Set<string>();
     const skuItems: Array<{ title: string; quantity: number; variantTitle?: string; sku: string }> = [];
     for (const o of orderList) {
+      if (isPaidStatus(o.status)) continue; // paid orders are already done, no need to check inventory
       for (const item of (o.lineItemsJson?.items ?? [])) {
         if (item.sku && !seenSkus.has(item.sku)) {
           seenSkus.add(item.sku);
@@ -632,6 +638,7 @@ export default function OrdersPage() {
               const items = meta?.items ?? [];
               const av = avail[o.id];
               const numericId = o.id.replace("gid://shopify/Order/", "");
+              const pending = !isPaidStatus(o.status);
               return (
                 <div
                   key={o.id}
@@ -646,7 +653,7 @@ export default function OrdersPage() {
                   {items.length > 0 && (
                     <div className="mt-0.5 space-y-1">
                       {items.map((item, idx) => {
-                        const skuResult = item.sku ? skuInventory[item.sku] : undefined;
+                        const skuResult = pending && item.sku ? skuInventory[item.sku] : undefined;
                         const hKey = `${o.orderNumber}:${item.title}:${item.variantTitle ?? ""}`;
                         return (
                           <div key={idx}>
@@ -679,8 +686,8 @@ export default function OrdersPage() {
                       {fulfillment}
                     </span>
                   )}
-                  {/* Check Availability - only for orders with items lacking SKU coverage */}
-                  {items.some(item => !item.sku || !skuInventory[item.sku]) && (
+                  {/* Check Availability - only for pending/unpaid orders with items lacking SKU coverage */}
+                  {pending && items.some(item => !item.sku || !skuInventory[item.sku]) && (
                     <div className="mt-3 pt-3 border-t border-zinc-50" onClick={(e) => e.stopPropagation()}>
                       {!av ? (
                         <button
@@ -735,6 +742,7 @@ export default function OrdersPage() {
                   const items = meta?.items ?? [];
                   const av = avail[o.id];
                   const numericId = o.id.replace("gid://shopify/Order/", "");
+                  const pending = !isPaidStatus(o.status);
                   return (
                     <tr
                       key={o.id}
@@ -748,7 +756,7 @@ export default function OrdersPage() {
                       </td>
                       <td className="px-4 py-3 text-zinc-500 text-xs max-w-[180px]">
                         {items.map((item, idx) => {
-                          const skuResult = item.sku ? skuInventory[item.sku] : undefined;
+                          const skuResult = pending && item.sku ? skuInventory[item.sku] : undefined;
                           const hKey = `${o.orderNumber}:${item.title}:${item.variantTitle ?? ""}`;
                           return (
                             <div key={idx}>
@@ -776,7 +784,7 @@ export default function OrdersPage() {
                       </td>
                       <td className="px-4 py-3 text-zinc-400 text-xs whitespace-nowrap">{format(new Date(o.createdAt), "MMM d, yyyy")}</td>
                       <td className="px-4 py-3 text-xs min-w-[160px]" onClick={(e) => e.stopPropagation()}>
-                        {items.length === 0 || items.every(item => item.sku && skuInventory[item.sku]) ? null : !av ? (
+                        {!pending || items.length === 0 || items.every(item => item.sku && skuInventory[item.sku]) ? null : !av ? (
                           <button onClick={(e) => { e.stopPropagation(); checkAvailability(o.id, items); }}
                             className="flex items-center gap-1 text-zinc-500 hover:text-zinc-800 border border-zinc-200 rounded-lg px-2 py-1 hover:bg-zinc-50 transition-colors whitespace-nowrap">
                             <PackageSearch size={11} /> Check Stock

@@ -76,9 +76,7 @@ export async function POST(req: NextRequest) {
     );
 
     let matches = titleMatches;
-    // If the order line item has a SKU, the SKU already encodes the exact variant/size.
-    // Don't show "size?" in that case — the SKU is authoritative.
-    let sizeMatched = !hasSize || !!orderSku;
+    let sizeMatched = !hasSize;
 
     if (hasSize && titleMatches.length > 0 && canonicalNeedle) {
       const sizeMatches = titleMatches.filter((inv) => {
