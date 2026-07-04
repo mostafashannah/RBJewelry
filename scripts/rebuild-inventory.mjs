@@ -127,13 +127,7 @@ function extractSize(variantTitle) {
 }
 
 async function main() {
-  const existingCount = await db.inventoryItem.count({ where: { status: "SOLD" } });
-  if (existingCount > 0) {
-    console.log(`Inventory already has ${existingCount} SOLD items — skipping rebuild.`);
-    return;
-  }
-
-  console.log("No SOLD items found. Running inventory rebuild from paid orders...");
+  console.log("Running inventory rebuild from paid orders...");
 
   const orders = await fetchAllPaidOrders();
   console.log(`Fetched ${orders.length} paid orders from Shopify.`);
