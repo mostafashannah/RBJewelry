@@ -56,8 +56,8 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: Clear all inventory items
-        run: node scripts/clear-inventory.mjs
+      - name: Seed inventory from paid orders (skips if already done)
+        run: node scripts/rebuild-inventory.mjs
         continue-on-error: true
 
       - name: Build
