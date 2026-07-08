@@ -47,7 +47,9 @@ export async function GET() {
   // Shopify products with their real variants — used by existing mode
   const shopifyProducts = shopifyRows.map((p) => {
     const raw = p.rawJson as { variants?: RawVariant[] } | null;
-    const variants = (raw?.variants ?? [])
+    const allVariants = raw?.variants ?? [];
+    const firstVariant = allVariants[0];
+    const variants = allVariants
       .map((v) => ({
         title: v.title ?? "",
         sku: v.sku ?? "",
@@ -55,7 +57,11 @@ export async function GET() {
         qty: v.inventory_quantity ?? 0,
       }))
       .filter((v) => v.title && v.title !== "Default Title");
-    return { id: p.id, title: p.title, imageUrl: p.imageUrl, variants };
+    return {
+      id: p.id, title: p.title, imageUrl: p.imageUrl, variants,
+      defaultSku: firstVariant?.sku ?? "",
+      defaultPrice: parseFloat(firstVariant?.price ?? "0") || p.priceMin,
+    };
   });
 
   return NextResponse.json({ byCategory, nextNumbers, shopifyProducts });

@@ -207,7 +207,12 @@ model InventoryItem {
   colors    String[]
   size      String?
   quantity  Int             @default(1)
-  costEGP   Float?
+  costEGP              Float?
+  metalCostEGP         Float?
+  platingCostEGP       Float?
+  stoneCostEGP         Float?
+  manufacturingCostEGP Float?
+  transportationCostEGP Float?
   priceEGP  Float?
   photoUrl  String?
   status    InventoryStatus @default(IN_STOCK)

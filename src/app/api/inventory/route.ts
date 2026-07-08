@@ -34,11 +34,18 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, sku, category, material, weightG, colors, size, quantity, costEGP, priceEGP, photoUrl, orderNo, notes } = body;
+  const { name, sku, category, material, weightG, colors, size, quantity,
+    metalCostEGP, platingCostEGP, stoneCostEGP, manufacturingCostEGP, transportationCostEGP,
+    costEGP, priceEGP, photoUrl, orderNo, notes } = body;
 
   if (!name || !category || weightG == null) {
     return NextResponse.json({ error: "name, category, and weightG are required" }, { status: 400 });
   }
+
+  const pf = (v: unknown) => (v ? parseFloat(String(v)) : null);
+  const subCosts = [metalCostEGP, platingCostEGP, stoneCostEGP, manufacturingCostEGP, transportationCostEGP];
+  const subTotal = subCosts.reduce((s, v) => s + (v ? parseFloat(String(v)) : 0), 0);
+  const finalCost = subTotal > 0 ? subTotal : (costEGP ? parseFloat(costEGP) : null);
 
   const item = await db.inventoryItem.create({
     data: {
@@ -50,7 +57,12 @@ export async function POST(req: NextRequest) {
       colors: Array.isArray(colors) ? colors : [],
       size: size || null,
       quantity: parseInt(quantity ?? "1"),
-      costEGP: costEGP ? parseFloat(costEGP) : null,
+      costEGP: finalCost,
+      metalCostEGP: pf(metalCostEGP),
+      platingCostEGP: pf(platingCostEGP),
+      stoneCostEGP: pf(stoneCostEGP),
+      manufacturingCostEGP: pf(manufacturingCostEGP),
+      transportationCostEGP: pf(transportationCostEGP),
       priceEGP: priceEGP ? parseFloat(priceEGP) : null,
       photoUrl: photoUrl ?? null,
       orderNo: orderNo || null,

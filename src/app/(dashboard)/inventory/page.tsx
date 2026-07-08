@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Plus, Camera, X, Scale, Tag, Package, Loader2, CheckCircle,
   Trash2, Edit2, Upload, FileSpreadsheet, Sparkles, AlertCircle,
@@ -36,9 +36,45 @@ function sizeFromItem(item: { size?: string | null; sku?: string | null }): stri
   return /^\d+$/.test(last) ? last : null;
 }
 
+// Parse Shopify product title → base name + embedded size/color
+function parseProductTitle(title: string): { baseName: string; embeddedOpt1: string; embeddedOpt2: string } {
+  const isSz = (s: string) => /^\d+$/.test(s.trim()) || /^(OS|One Size|XS|S|M|L|XL)$/i.test(s.trim());
+  let opt1 = "", opt2 = "", t = title;
+  const pm = t.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  if (pm) {
+    t = pm[1].trim();
+    const paren = pm[2].trim();
+    const parts = paren.split(/\s*\/\s*/);
+    if (parts.length >= 2) {
+      if (isSz(parts[1])) { opt1 = parts[1].trim(); opt2 = parts[0].trim(); }
+      else if (isSz(parts[0])) { opt1 = parts[0].trim(); opt2 = parts[1].trim(); }
+      else { opt1 = parts[0].trim(); opt2 = parts[1].trim(); }
+    } else if (isSz(paren)) { opt1 = paren; }
+    else { opt2 = paren; }
+    const di = t.indexOf(" — ");
+    if (di > 0) t = t.slice(0, di).trim();
+  }
+  return { baseName: t.trim() || title.trim(), embeddedOpt1: opt1, embeddedOpt2: opt2 };
+}
+
+// Parse variant title like "6 / Silver" → { opt1: size, opt2: color }
+function parseVariantTitle(vt: string, fo1: string, fo2: string): { opt1: string; opt2: string } {
+  const isSz = (s: string) => /^\d+$/.test(s.trim()) || /^(OS|One Size|XS|S|M|L|XL)$/i.test(s.trim());
+  const parts = vt.split(/\s*\/\s*/);
+  if (parts.length >= 2) {
+    if (isSz(parts[1])) return { opt1: parts[1].trim(), opt2: parts[0].trim() };
+    if (isSz(parts[0])) return { opt1: parts[0].trim(), opt2: parts[1].trim() };
+    return { opt1: parts[0].trim(), opt2: parts[1].trim() };
+  }
+  if (isSz(parts[0])) return { opt1: parts[0].trim(), opt2: fo2 };
+  return { opt1: fo1, opt2: parts[0].trim() };
+}
+
 type AddMode = "existing" | "new-color" | "new";
 type ShopifyVariantEntry = { title: string; sku: string; price: number; qty: number };
-type ShopifyProductEntry = { id: string; title: string; imageUrl: string | null; variants: ShopifyVariantEntry[] };
+type ShopifyProductEntry = { id: string; title: string; imageUrl: string | null; variants: ShopifyVariantEntry[]; defaultSku: string; defaultPrice: number };
+type ShopifyGroupOption = { opt1: string; opt2: string; sku: string; price: number };
+type ShopifyGroup = { baseName: string; imageUrl: string | null; options: ShopifyGroupOption[] };
 type SkuMeta = {
   byCategory: Record<string, Array<{ id: string; name: string; sku: string | null; priceEGP: number | null }>>;
   nextNumbers: Record<string, number>;
@@ -55,7 +91,10 @@ const STATUS_COLORS: Record<string, string> = {
 
 interface Item {
   id: string; name: string; sku: string | null; category: string; material: string;
-  weightG: number; colors: string[]; size: string | null; quantity: number; costEGP: number | null;
+  weightG: number; colors: string[]; size: string | null; quantity: number;
+  costEGP: number | null;
+  metalCostEGP: number | null; platingCostEGP: number | null; stoneCostEGP: number | null;
+  manufacturingCostEGP: number | null; transportationCostEGP: number | null;
   priceEGP: number | null; photoUrl: string | null; status: string;
   orderNo: string | null; notes: string | null; createdAt: string;
 }
@@ -70,7 +109,9 @@ interface SilverData {
 const emptyForm = {
   name: "", sku: "", category: CATEGORIES[0], material: MATERIALS[0],
   weightG: "", colors: [] as string[], size: "", quantity: "1",
-  costEGP: "", priceEGP: "", orderNo: "", notes: "",
+  metalCostEGP: "", platingCostEGP: "", stoneCostEGP: "",
+  manufacturingCostEGP: "", transportationCostEGP: "",
+  priceEGP: "", orderNo: "", notes: "",
 };
 
 export default function InventoryPage() {
@@ -112,8 +153,8 @@ export default function InventoryPage() {
   const [selectedProduct, setSelectedProduct] = useState<SkuMeta["byCategory"][string][0] | null>(null);
   const [selectedColorCode, setSelectedColorCode] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
-  // For "existing" mode — driven by real Shopify variant data
-  const [selectedShopifyProduct, setSelectedShopifyProduct] = useState<ShopifyProductEntry | null>(null);
+  // For "existing" mode — driven by real Shopify variant data grouped by base name
+  const [selectedBaseName, setSelectedBaseName] = useState("");
   const [selectedOpt1, setSelectedOpt1] = useState("");
   const [selectedOpt2, setSelectedOpt2] = useState("");
 
@@ -122,6 +163,29 @@ export default function InventoryPage() {
     const data = await res.json();
     setSkuMeta(data);
   }, []);
+
+  // Group Shopify products by cleaned base name for the "existing" picker
+  const shopifyGroups = useMemo<Map<string, ShopifyGroup>>(() => {
+    const map = new Map<string, ShopifyGroup>();
+    for (const p of (skuMeta?.shopifyProducts ?? [])) {
+      const { baseName, embeddedOpt1, embeddedOpt2 } = parseProductTitle(p.title);
+      if (!map.has(baseName)) map.set(baseName, { baseName, imageUrl: p.imageUrl, options: [] });
+      const g = map.get(baseName)!;
+      if (!g.imageUrl && p.imageUrl) g.imageUrl = p.imageUrl;
+      const realVariants = p.variants.filter((v) => v.title && v.title !== "Default Title");
+      if (realVariants.length > 0) {
+        for (const v of realVariants) {
+          const { opt1, opt2 } = parseVariantTitle(v.title, embeddedOpt1, embeddedOpt2);
+          if (!g.options.some((o) => o.opt1 === opt1 && o.opt2 === opt2))
+            g.options.push({ opt1, opt2, sku: v.sku, price: v.price });
+        }
+      } else {
+        if (!g.options.some((o) => o.opt1 === embeddedOpt1 && o.opt2 === embeddedOpt2))
+          g.options.push({ opt1: embeddedOpt1, opt2: embeddedOpt2, sku: p.defaultSku, price: p.defaultPrice });
+      }
+    }
+    return map;
+  }, [skuMeta]);
 
   const load = useCallback(async (q?: string) => {
     setLoading(true);
@@ -231,7 +295,7 @@ export default function InventoryPage() {
     setEditItem(null); setForm({ ...emptyForm }); setPhotoUrl(null); setAiHints([]);
     setShopifySuggestions([]); setShowSuggestions(false);
     setAddMode("existing"); setSelectedProduct(null); setSelectedColorCode(""); setSelectedSize("");
-    setSelectedShopifyProduct(null); setSelectedOpt1(""); setSelectedOpt2("");
+    setSelectedBaseName(""); setSelectedOpt1(""); setSelectedOpt2("");
     fetchSkuMeta();
     setShowAdd(true);
   };
@@ -242,7 +306,11 @@ export default function InventoryPage() {
       name: item.name, sku: item.sku ?? "", category: item.category, material: item.material,
       weightG: String(item.weightG), colors: item.colors ?? [], size: item.size ?? "",
       quantity: String(item.quantity),
-      costEGP: item.costEGP != null ? String(item.costEGP) : "",
+      metalCostEGP: item.metalCostEGP != null ? String(item.metalCostEGP) : "",
+      platingCostEGP: item.platingCostEGP != null ? String(item.platingCostEGP) : "",
+      stoneCostEGP: item.stoneCostEGP != null ? String(item.stoneCostEGP) : "",
+      manufacturingCostEGP: item.manufacturingCostEGP != null ? String(item.manufacturingCostEGP) : "",
+      transportationCostEGP: item.transportationCostEGP != null ? String(item.transportationCostEGP) : "",
       priceEGP: item.priceEGP != null ? String(item.priceEGP) : "",
       orderNo: item.orderNo ?? "", notes: item.notes ?? "",
     });
@@ -252,21 +320,19 @@ export default function InventoryPage() {
   // Auto-generate SKU when smart-add fields change
   useEffect(() => {
     if (editItem) return;
-    if (addMode === "existing" && selectedShopifyProduct) {
-      // Find matching variant from the selected Shopify options
-      const matched = selectedShopifyProduct.variants.find((v) => {
-        const parts = v.title.split(" / ");
-        if (selectedOpt1 && parts[0] !== selectedOpt1) return false;
-        if (selectedOpt2 && parts[1] !== selectedOpt2) return false;
-        return true;
-      }) ?? (selectedShopifyProduct.variants[0] ?? null);
-
-      setForm((f) => ({
-        ...f,
-        name: selectedShopifyProduct.title,
-        sku: matched?.sku ?? f.sku,
-        priceEGP: matched?.price ? String(matched.price) : f.priceEGP,
-      }));
+    if (addMode === "existing" && selectedBaseName) {
+      const group = shopifyGroups.get(selectedBaseName);
+      if (group) {
+        const matched = group.options.find((o) =>
+          (!selectedOpt1 || o.opt1 === selectedOpt1) && (!selectedOpt2 || o.opt2 === selectedOpt2)
+        ) ?? group.options[0] ?? null;
+        setForm((f) => ({
+          ...f,
+          name: selectedBaseName,
+          sku: matched?.sku ?? f.sku,
+          priceEGP: matched?.price ? String(matched.price) : f.priceEGP,
+        }));
+      }
       return;
     }
     if (addMode === "new-color" && selectedProduct) {
@@ -292,12 +358,14 @@ export default function InventoryPage() {
       setForm((f) => ({ ...f, sku, size: selectedSize }));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addMode, selectedProduct, selectedColorCode, selectedSize, form.category, skuMeta, editItem, selectedShopifyProduct, selectedOpt1, selectedOpt2]);
+  }, [addMode, selectedProduct, selectedColorCode, selectedSize, form.category, skuMeta, editItem, selectedBaseName, selectedOpt1, selectedOpt2]);
 
   const save = async () => {
     if (!form.name || !form.weightG) return;
     setSaving(true);
-    const body = { ...form, photoUrl };
+    const totalCost = [form.metalCostEGP, form.platingCostEGP, form.stoneCostEGP, form.manufacturingCostEGP, form.transportationCostEGP]
+      .reduce((s, v) => s + (parseFloat(v) || 0), 0);
+    const body = { ...form, photoUrl, costEGP: totalCost > 0 ? String(totalCost) : "" };
     if (editItem) {
       await fetch(`/api/inventory/${editItem.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -732,7 +800,7 @@ export default function InventoryPage() {
                         { key: "new", label: "Brand new item" },
                       ] as { key: AddMode; label: string }[]).map(({ key, label }) => (
                         <button key={key} type="button"
-                          onClick={() => { setAddMode(key); setSelectedProduct(null); setSelectedColorCode(""); setSelectedSize(""); setSelectedShopifyProduct(null); setSelectedOpt1(""); setSelectedOpt2(""); }}
+                          onClick={() => { setAddMode(key); setSelectedProduct(null); setSelectedColorCode(""); setSelectedSize(""); setSelectedBaseName(""); setSelectedOpt1(""); setSelectedOpt2(""); }}
                           className={`text-[11px] px-2 py-2 rounded-xl border transition-colors text-center leading-tight ${addMode === key ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500 hover:border-zinc-400"}`}>
                           {label}
                         </button>
@@ -750,42 +818,39 @@ export default function InventoryPage() {
                     </select>
                   </div>
 
-                  {/* Existing product picker — names only from Shopify, then real option chips */}
+                  {/* Existing product picker — grouped by base name, then real size/color chips */}
                   {addMode === "existing" && (() => {
-                    const opt1Values = selectedShopifyProduct
-                      ? Array.from(new Set(selectedShopifyProduct.variants.map((v) => v.title.split(" / ")[0]).filter(Boolean)))
+                    const baseNames = Array.from(shopifyGroups.keys()).sort();
+                    const currentGroup = selectedBaseName ? shopifyGroups.get(selectedBaseName) : null;
+                    const opt1Vals = currentGroup
+                      ? Array.from(new Set(currentGroup.options.map((o) => o.opt1).filter(Boolean))).sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0) || a.localeCompare(b))
                       : [];
-                    const opt2Values = selectedShopifyProduct
-                      ? Array.from(new Set(selectedShopifyProduct.variants.map((v) => v.title.split(" / ")[1]).filter(Boolean)))
+                    const opt2Vals = currentGroup
+                      ? Array.from(new Set(currentGroup.options.map((o) => o.opt2).filter(Boolean))).sort()
                       : [];
-                    const isSize = (vals: string[]) => vals.some((v) => /^\d+$/.test(v) || /^(OS|One Size|XS|S|M|L|XL)$/i.test(v));
+                    const isNumSize = (vals: string[]) => vals.some((v) => /^\d+$/.test(v) || /^(OS|One Size|XS|S|M|L|XL)$/i.test(v));
                     return (
                       <div className="space-y-3">
                         <div>
                           <label className="text-xs font-medium text-zinc-600 block mb-1">Product</label>
                           <select
-                            value={selectedShopifyProduct?.id ?? ""}
-                            onChange={(e) => {
-                              const p = (skuMeta?.shopifyProducts ?? []).find((x) => x.id === e.target.value) ?? null;
-                              setSelectedShopifyProduct(p);
-                              setSelectedOpt1("");
-                              setSelectedOpt2("");
-                            }}
+                            value={selectedBaseName}
+                            onChange={(e) => { setSelectedBaseName(e.target.value); setSelectedOpt1(""); setSelectedOpt2(""); }}
                             className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400">
                             <option value="">— select product —</option>
-                            {(skuMeta?.shopifyProducts ?? []).map((p) => (
-                              <option key={p.id} value={p.id}>{p.title}</option>
+                            {baseNames.map((name) => (
+                              <option key={name} value={name}>{name}</option>
                             ))}
                           </select>
                         </div>
 
-                        {opt1Values.length > 0 && (
+                        {opt1Vals.length > 0 && (
                           <div>
                             <label className="text-xs font-medium text-zinc-600 block mb-2">
-                              {isSize(opt1Values) ? "Size" : "Option"}
+                              {isNumSize(opt1Vals) ? "Size" : "Option"}
                             </label>
                             <div className="flex flex-wrap gap-1.5">
-                              {opt1Values.map((v) => (
+                              {opt1Vals.map((v) => (
                                 <button key={v} type="button"
                                   onClick={() => setSelectedOpt1(selectedOpt1 === v ? "" : v)}
                                   className={`text-xs px-3 py-1.5 rounded-xl border transition-colors ${selectedOpt1 === v ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500 hover:border-zinc-400"}`}>
@@ -796,11 +861,11 @@ export default function InventoryPage() {
                           </div>
                         )}
 
-                        {opt2Values.length > 0 && (
+                        {opt2Vals.length > 0 && (
                           <div>
                             <label className="text-xs font-medium text-zinc-600 block mb-2">Color</label>
                             <div className="flex flex-wrap gap-1.5">
-                              {opt2Values.map((v) => (
+                              {opt2Vals.map((v) => (
                                 <button key={v} type="button"
                                   onClick={() => setSelectedOpt2(selectedOpt2 === v ? "" : v)}
                                   className={`text-xs px-3 py-1.5 rounded-xl border transition-colors ${selectedOpt2 === v ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500 hover:border-zinc-400"}`}>
@@ -1004,20 +1069,45 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              {/* Cost + Price */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-zinc-600 block mb-1">Cost (EGP)</label>
-                  <input type="number" min="0" value={form.costEGP}
-                    onChange={(e) => setForm({ ...form, costEGP: e.target.value })} placeholder="Cost"
-                    className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
+              {/* Cost Breakdown */}
+              <div>
+                <label className="text-xs font-medium text-zinc-600 block mb-2">Cost Breakdown (EGP)</label>
+                <div className="space-y-1.5">
+                  {([
+                    { key: "metalCostEGP", label: "Metal" },
+                    { key: "platingCostEGP", label: "Plating" },
+                    { key: "stoneCostEGP", label: "Stone" },
+                    { key: "manufacturingCostEGP", label: "Manufacturing" },
+                    { key: "transportationCostEGP", label: "Transportation" },
+                  ] as { key: keyof typeof form; label: string }[]).map(({ key, label }) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <span className="text-xs text-zinc-500 w-28 shrink-0">{label}</span>
+                      <input type="number" min="0" step="0.01"
+                        value={form[key] as string}
+                        onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                        placeholder="0"
+                        className="flex-1 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zinc-400" />
+                    </div>
+                  ))}
+                  {(() => {
+                    const total = [form.metalCostEGP, form.platingCostEGP, form.stoneCostEGP, form.manufacturingCostEGP, form.transportationCostEGP]
+                      .reduce((s, v) => s + (parseFloat(v) || 0), 0);
+                    return total > 0 ? (
+                      <div className="flex items-center justify-between pt-2 border-t border-zinc-100 mt-1">
+                        <span className="text-xs font-medium text-zinc-600">Total Cost</span>
+                        <span className="text-sm font-semibold text-zinc-900">{total.toLocaleString()} EGP</span>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
-                <div>
-                  <label className="text-xs font-medium text-zinc-600 block mb-1">Price (EGP)</label>
-                  <input type="number" min="0" value={form.priceEGP}
-                    onChange={(e) => setForm({ ...form, priceEGP: e.target.value })} placeholder="Selling price"
-                    className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
-                </div>
+              </div>
+
+              {/* Selling Price */}
+              <div>
+                <label className="text-xs font-medium text-zinc-600 block mb-1">Price (EGP)</label>
+                <input type="number" min="0" value={form.priceEGP}
+                  onChange={(e) => setForm({ ...form, priceEGP: e.target.value })} placeholder="Selling price"
+                  className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
               </div>
 
               {/* Order No */}
