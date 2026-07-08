@@ -104,7 +104,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   );
 
   return (
-    <div className="flex h-screen bg-[#fafafa]">
+    <div className="flex h-screen bg-[#fafafa]" style={{ paddingTop: "env(safe-area-inset-top)" }}>
       {/* Desktop sidebar */}
       <aside className="hidden md:flex w-56 shrink-0 border-r border-zinc-100 bg-white flex-col">
         <div className="h-14 flex items-center px-5 border-b border-zinc-100">
