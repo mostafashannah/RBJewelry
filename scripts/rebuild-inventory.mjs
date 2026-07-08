@@ -17,8 +17,8 @@ if (existsSync(".env.local")) {
 const COST_BY_SKU = {
   // Duo Stone Ring Gold (R00001-G) — 528 material + 80 packaging
   "R00001-G-6": 608, "R00001-G-7": 608, "R00001-G-8": 608, "R00001-G-9": 608,
-  // Duo Stone Ring Pink (R00001-P) — same cost as Gold variant
-  "R00001-P-6": 608, "R00001-P-7": 608, "R00001-P-8": 608, "R00001-P-9": 608,
+  // Duo Stone Ring Green (R00001-GR) — same cost as Gold variant
+  "R00001-GR-6": 608, "R00001-GR-7": 608, "R00001-GR-8": 608, "R00001-GR-9": 608,
   // Mosaic Ring (R00002) — sizes 7 & 9 measured; 6 & 8 use average
   "R00002-6": 1037, "R00002-7": 1208, "R00002-8": 1037, "R00002-9": 866,
   // Wave Ring (R00003) — 782 material + 80 packaging
@@ -62,14 +62,14 @@ const LINE_ITEMS = [
   { orderNo: "1006", title: "The Wave Ring", variantTitle: "8", sku: "R00003-8", quantity: 1, priceEGP: 1399 },
   { orderNo: "1007", title: "The Green Emerald Cut Ring", variantTitle: "6", sku: "R00012-6", quantity: 1, priceEGP: 1099 },
   { orderNo: "1008", title: "Wave Ring", variantTitle: "7", sku: "R00003-7", quantity: 1, priceEGP: 1399 },
-  { orderNo: "1010", title: "Duo Stone Ring", variantTitle: "Pink / 7", sku: "R00001-P-7", quantity: 1, priceEGP: 1199 },
+  { orderNo: "1010", title: "Duo Stone Ring", variantTitle: "Green / 7", sku: "R00001-GR-7", quantity: 1, priceEGP: 1199 },
   { orderNo: "1011", title: "Ridge Ring", variantTitle: "7", sku: "R00006-7", quantity: 1, priceEGP: 2099 },
   { orderNo: "1011", title: "Mosaic Ring", variantTitle: "7", sku: "R00002-7", quantity: 1, priceEGP: 1199 },
   { orderNo: "1012", title: "Ruby Cuff", variantTitle: null, sku: "B00002", quantity: 1, priceEGP: 2699 },
   { orderNo: "1013", title: "Mini Green Ring", variantTitle: "Green / 8", sku: "R00010-GR-8", quantity: 1, priceEGP: 699 },
   { orderNo: "1014", title: "Ridge Ring", variantTitle: "6", sku: "R00006-6", quantity: 1, priceEGP: 2099 },
-  { orderNo: "1015", title: "Duo Stone Ring", variantTitle: "Pink / 7", sku: "R00001-P-7", quantity: 1, priceEGP: 1499 },
-  { orderNo: "1016", title: "Duo Stone Ring", variantTitle: "Pink / 6", sku: "R00001-P-6", quantity: 1, priceEGP: 1499 },
+  { orderNo: "1015", title: "Duo Stone Ring", variantTitle: "Green / 7", sku: "R00001-GR-7", quantity: 1, priceEGP: 1499 },
+  { orderNo: "1016", title: "Duo Stone Ring", variantTitle: "Green / 6", sku: "R00001-GR-6", quantity: 1, priceEGP: 1499 },
   { orderNo: "1017", title: "Dotted Ring", variantTitle: "7", sku: "R00004-7", quantity: 1, priceEGP: 1999 },
   { orderNo: "1018", title: "Dotted Ring", variantTitle: "7", sku: "R00004-7", quantity: 1, priceEGP: 1999 },
   { orderNo: "1018", title: "Trio Stone Ring", variantTitle: "7", sku: "R00007-7", quantity: 1, priceEGP: 1299 },
@@ -81,7 +81,7 @@ const LINE_ITEMS = [
   { orderNo: "1026", title: "Wave Ring", variantTitle: "8", sku: "R00003-8", quantity: 1, priceEGP: 1599 },
   { orderNo: "1027", title: "Ruby Cuff", variantTitle: null, sku: "B00002", quantity: 1, priceEGP: 2399 },
   { orderNo: "1028", title: "Arabesque Earrings", variantTitle: null, sku: "E00002", quantity: 1, priceEGP: 1999 },
-  { orderNo: "1029", title: "Duo Stone Ring", variantTitle: "Pink / 8", sku: "R00001-P-8", quantity: 1, priceEGP: 1499 },
+  { orderNo: "1029", title: "Duo Stone Ring", variantTitle: "Green / 8", sku: "R00001-GR-8", quantity: 1, priceEGP: 1499 },
   { orderNo: "1031", title: "Marquise Ring", variantTitle: "8", sku: "R00009-8", quantity: 1, priceEGP: 1699 },
   { orderNo: "1032", title: "Wave Ring", variantTitle: "8", sku: "R00003-8", quantity: 1, priceEGP: 1699 },
   { orderNo: "1032", title: "Mosaic Ring", variantTitle: "8", sku: "R00002-8", quantity: 1, priceEGP: 1899 },
@@ -96,7 +96,7 @@ const LINE_ITEMS = [
   { orderNo: "1043", title: "Marquise Ring", variantTitle: "9", sku: "R00009-9", quantity: 1, priceEGP: 1699 },
   { orderNo: "1049", title: "Mosaic Ring — Gold Plated Sterling Silver Ring with Colored Stones for Women", variantTitle: "9", sku: "R00002-9", quantity: 1, priceEGP: 2299 },
   { orderNo: "1050", title: "Mosaic Ring — Gold Plated Sterling Silver Ring with Colored Stones for Women", variantTitle: "6", sku: "R00002-6", quantity: 1, priceEGP: 2299 },
-  { orderNo: "1050", title: "Duo Stone Ring — Gold Plated Sterling Silver Gemstone Ring for Women", variantTitle: "Pink / 6", sku: "R00001-P-6", quantity: 1, priceEGP: 1599 },
+  { orderNo: "1050", title: "Duo Stone Ring — Gold Plated Sterling Silver Gemstone Ring for Women", variantTitle: "Green / 6", sku: "R00001-GR-6", quantity: 1, priceEGP: 1599 },
   { orderNo: "1051", title: "Mosaic Ring — Gold Plated Sterling Silver Ring with Colored Stones for Women", variantTitle: "6", sku: "R00002-6", quantity: 1, priceEGP: 2299 },
 ];
 
@@ -153,10 +153,17 @@ async function readWeightsFromSheets() {
     }
     if (!rows || rows.length < 2) { console.warn("No sheet rows for weights"); return new Map(); }
     const headers = rows[0].map((h) => String(h ?? "").toLowerCase().trim());
-    const skuIdx    = headers.findIndex((h) => h === "sku" || h === "كود" || h.includes("sku"));
-    const weightIdx = headers.findIndex((h) => h.includes("weight") || h.includes("وزن"));
+    const skuIdx = headers.findIndex((h) =>
+      h === "sku" || h === "كود" || h === "كود المنتج" || h === "product code" ||
+      h.includes("sku") || h.includes("كود")
+    );
+    const weightIdx = headers.findIndex((h) =>
+      h.includes("weight") || h.includes("وزن") || h.includes("الوزن") ||
+      h.includes("gram") || h.includes("جرام") || h.includes("غرام") ||
+      h === "wt" || h === "gm" || h === "g (wt)"
+    );
     if (skuIdx === -1 || weightIdx === -1) {
-      console.warn(`Weight col not found. Headers: ${headers.join(", ")}`);
+      console.warn(`Weight col not found. Headers: [${headers.join(" | ")}]`);
       return new Map();
     }
     const map = new Map();
