@@ -753,10 +753,10 @@ export default function InventoryPage() {
                   {/* Existing product picker — names only from Shopify, then real option chips */}
                   {addMode === "existing" && (() => {
                     const opt1Values = selectedShopifyProduct
-                      ? [...new Set(selectedShopifyProduct.variants.map((v) => v.title.split(" / ")[0]).filter(Boolean))]
+                      ? Array.from(new Set(selectedShopifyProduct.variants.map((v) => v.title.split(" / ")[0]).filter(Boolean)))
                       : [];
                     const opt2Values = selectedShopifyProduct
-                      ? [...new Set(selectedShopifyProduct.variants.map((v) => v.title.split(" / ")[1]).filter(Boolean))]
+                      ? Array.from(new Set(selectedShopifyProduct.variants.map((v) => v.title.split(" / ")[1]).filter(Boolean)))
                       : [];
                     const isSize = (vals: string[]) => vals.some((v) => /^\d+$/.test(v) || /^(OS|One Size|XS|S|M|L|XL)$/i.test(v));
                     return (
