@@ -1,7 +1,7 @@
 /**
- * One-time inventory setup: populates inventory from all paid Shopify orders.
- * Skips automatically if SOLD items already exist in the database.
- * Cost per piece sourced from the RB Jewelry Product Inventory Sheet + 80 EGP packaging.
+ * Rebuilds SOLD inventory from static paid-order data fetched 2026-07-04 via Shopify MCP.
+ * No Shopify API call required — data is embedded below.
+ * Cost per piece = material + plating + 80 EGP packaging.
  */
 import { existsSync, readFileSync } from "fs";
 import { PrismaClient } from "@prisma/client";
@@ -13,12 +13,11 @@ if (existsSync(".env.local")) {
   }
 }
 
-// Cost per piece (EGP) = material + plating + 80 packaging.
-// Same-size rule: sizes not in the sheet use the same cost as the measured size of that SKU.
-const PACKAGING = 80;
 const COST_BY_SKU = {
-  // Duo Stone Ring (R00001-G) — 528 material + 80 packaging
+  // Duo Stone Ring Gold (R00001-G) — 528 material + 80 packaging
   "R00001-G-6": 608, "R00001-G-7": 608, "R00001-G-8": 608, "R00001-G-9": 608,
+  // Duo Stone Ring Pink (R00001-P) — same cost as Gold variant
+  "R00001-P-6": 608, "R00001-P-7": 608, "R00001-P-8": 608, "R00001-P-9": 608,
   // Mosaic Ring (R00002) — sizes 7 & 9 measured; 6 & 8 use average
   "R00002-6": 1037, "R00002-7": 1208, "R00002-8": 1037, "R00002-9": 866,
   // Wave Ring (R00003) — 782 material + 80 packaging
@@ -27,7 +26,7 @@ const COST_BY_SKU = {
   "R00004-6": 1115, "R00004-7": 1115, "R00004-8": 1115, "R00004-9": 1206,
   // Ridge Ring (R00006) — sizes 6, 7, 8 measured
   "R00006-6": 1246, "R00006-7": 1275, "R00006-8": 1291, "R00006-9": 1275,
-  // Trio Blue Ring (R00007) — 750 EGP (manual entry) + 80 packaging
+  // Trio Blue Ring (R00007) — 750 EGP + 80 packaging
   "R00007-6": 830, "R00007-7": 830, "R00007-8": 830, "R00007-9": 830,
   // Signet Ring (R00008) — sizes 7 & 8 measured; 6 uses size-7 value
   "R00008-6": 1148, "R00008-7": 1148, "R00008-8": 1143, "R00008-9": 1148,
@@ -35,11 +34,13 @@ const COST_BY_SKU = {
   "R00009-6": 953, "R00009-7": 953, "R00009-8": 953, "R00009-9": 953,
   // Mini Green Ring (R00010) — 220 material + 80 packaging
   "R00010-6": 300, "R00010-7": 300, "R00010-8": 300, "R00010-9": 300,
+  // Mini Green Ring with color suffix variants
+  "R00010-GR-6": 300, "R00010-GR-7": 300, "R00010-GR-8": 300, "R00010-GR-9": 300,
   // Green Core Ring (R00011) — size 7 avg 579, size 8 = 243
   "R00011-6": 660, "R00011-7": 660, "R00011-8": 323, "R00011-9": 323,
   // Green Emerald Cut Ring (R00012) — sizes 6 & 7 measured
   "R00012-6": 752, "R00012-7": 679, "R00012-8": 752, "R00012-9": 679,
-  // Wave Cuff (B00001) — avg of 3 measured pieces
+  // Wave Cuff (B00001)
   "B00001": 1321,
   // Ruby Cuff (B00002)
   "B00002": 1373,
@@ -53,61 +54,52 @@ const COST_BY_SKU = {
   "N00001": 3442,
 };
 
+// All paid orders fetched 2026-07-04 from Shopify (financial_status:paid)
+const LINE_ITEMS = [
+  { orderNo: "1004", title: "The Trio Blue Ring", variantTitle: "8", sku: "R00007-8", quantity: 1, priceEGP: 999 },
+  { orderNo: "1006", title: "The Dotted Ring", variantTitle: "8", sku: "R00004-8", quantity: 1, priceEGP: 1899 },
+  { orderNo: "1006", title: "The Wave Ring", variantTitle: "8", sku: "R00003-8", quantity: 1, priceEGP: 1399 },
+  { orderNo: "1007", title: "The Green Emerald Cut Ring", variantTitle: "6", sku: "R00012-6", quantity: 1, priceEGP: 1099 },
+  { orderNo: "1008", title: "Wave Ring", variantTitle: "7", sku: "R00003-7", quantity: 1, priceEGP: 1399 },
+  { orderNo: "1010", title: "Duo Stone Ring", variantTitle: "Pink / 7", sku: "R00001-P-7", quantity: 1, priceEGP: 1199 },
+  { orderNo: "1011", title: "Ridge Ring", variantTitle: "7", sku: "R00006-7", quantity: 1, priceEGP: 2099 },
+  { orderNo: "1011", title: "Mosaic Ring", variantTitle: "7", sku: "R00002-7", quantity: 1, priceEGP: 1199 },
+  { orderNo: "1012", title: "Ruby Cuff", variantTitle: null, sku: "B00002", quantity: 1, priceEGP: 2699 },
+  { orderNo: "1013", title: "Mini Green Ring", variantTitle: "Green / 8", sku: "R00010-GR-8", quantity: 1, priceEGP: 699 },
+  { orderNo: "1014", title: "Ridge Ring", variantTitle: "6", sku: "R00006-6", quantity: 1, priceEGP: 2099 },
+  { orderNo: "1015", title: "Duo Stone Ring", variantTitle: "Pink / 7", sku: "R00001-P-7", quantity: 1, priceEGP: 1499 },
+  { orderNo: "1016", title: "Duo Stone Ring", variantTitle: "Pink / 6", sku: "R00001-P-6", quantity: 1, priceEGP: 1499 },
+  { orderNo: "1017", title: "Dotted Ring", variantTitle: "7", sku: "R00004-7", quantity: 1, priceEGP: 1999 },
+  { orderNo: "1018", title: "Dotted Ring", variantTitle: "7", sku: "R00004-7", quantity: 1, priceEGP: 1999 },
+  { orderNo: "1018", title: "Trio Stone Ring", variantTitle: "7", sku: "R00007-7", quantity: 1, priceEGP: 1299 },
+  { orderNo: "1019", title: "Emerald Cut Ring", variantTitle: "6", sku: "R00012-6", quantity: 1, priceEGP: 1499 },
+  { orderNo: "1020", title: "Mini Band Ring", variantTitle: "Green / 7", sku: "R00010-GR-7", quantity: 1, priceEGP: 899 },
+  { orderNo: "1022", title: "Mosaic Ring", variantTitle: "7", sku: "R00002-7", quantity: 1, priceEGP: 1899 },
+  { orderNo: "1023", title: "Wave Ring", variantTitle: "9", sku: "R00003-9", quantity: 1, priceEGP: 1599 },
+  { orderNo: "1024", title: "Core Ring", variantTitle: "8", sku: "R00011-8", quantity: 1, priceEGP: 1399 },
+  { orderNo: "1026", title: "Wave Ring", variantTitle: "8", sku: "R00003-8", quantity: 1, priceEGP: 1599 },
+  { orderNo: "1027", title: "Ruby Cuff", variantTitle: null, sku: "B00002", quantity: 1, priceEGP: 2399 },
+  { orderNo: "1028", title: "Arabesque Earrings", variantTitle: null, sku: "E00002", quantity: 1, priceEGP: 1999 },
+  { orderNo: "1029", title: "Duo Stone Ring", variantTitle: "Pink / 8", sku: "R00001-P-8", quantity: 1, priceEGP: 1499 },
+  { orderNo: "1031", title: "Marquise Ring", variantTitle: "8", sku: "R00009-8", quantity: 1, priceEGP: 1699 },
+  { orderNo: "1032", title: "Wave Ring", variantTitle: "8", sku: "R00003-8", quantity: 1, priceEGP: 1699 },
+  { orderNo: "1032", title: "Mosaic Ring", variantTitle: "8", sku: "R00002-8", quantity: 1, priceEGP: 1899 },
+  { orderNo: "1035", title: "Wave Ring", variantTitle: "9", sku: "R00003-9", quantity: 1, priceEGP: 1699 },
+  { orderNo: "1035", title: "Mosaic Ring", variantTitle: "9", sku: "R00002-9", quantity: 1, priceEGP: 1899 },
+  { orderNo: "1039", title: "Signet Ring", variantTitle: "6", sku: "R00008-6", quantity: 1, priceEGP: 2099 },
+  { orderNo: "1039", title: "Signet Ring", variantTitle: "7", sku: "R00008-7", quantity: 1, priceEGP: 2099 },
+  { orderNo: "1040", title: "Wave Ring — Minimalist Gold Plated Sterling Silver Open Ring for Women", variantTitle: "9", sku: "R00003-9", quantity: 1, priceEGP: 1799 },
+  { orderNo: "1040", title: "Mosaic Ring — Gold Plated Sterling Silver Ring with Colored Stones for Women", variantTitle: "9", sku: "R00002-9", quantity: 1, priceEGP: 1999 },
+  { orderNo: "1042", title: "Mosaic Ring — Gold Plated Sterling Silver Ring with Colored Stones for Women", variantTitle: "7", sku: "R00002-7", quantity: 1, priceEGP: 1999 },
+  { orderNo: "1043", title: "Core Ring", variantTitle: "9", sku: "R00011-9", quantity: 1, priceEGP: 1599 },
+  { orderNo: "1043", title: "Marquise Ring", variantTitle: "9", sku: "R00009-9", quantity: 1, priceEGP: 1699 },
+  { orderNo: "1049", title: "Mosaic Ring — Gold Plated Sterling Silver Ring with Colored Stones for Women", variantTitle: "9", sku: "R00002-9", quantity: 1, priceEGP: 2299 },
+  { orderNo: "1050", title: "Mosaic Ring — Gold Plated Sterling Silver Ring with Colored Stones for Women", variantTitle: "6", sku: "R00002-6", quantity: 1, priceEGP: 2299 },
+  { orderNo: "1050", title: "Duo Stone Ring — Gold Plated Sterling Silver Gemstone Ring for Women", variantTitle: "Pink / 6", sku: "R00001-P-6", quantity: 1, priceEGP: 1599 },
+  { orderNo: "1051", title: "Mosaic Ring — Gold Plated Sterling Silver Ring with Colored Stones for Women", variantTitle: "6", sku: "R00002-6", quantity: 1, priceEGP: 2299 },
+];
+
 const db = new PrismaClient();
-const SHOPIFY_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
-const API_VERSION = "2025-01";
-
-async function shopifyFetch(query, variables) {
-  const token = process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN;
-  const res = await fetch(`https://${SHOPIFY_DOMAIN}/admin/api/${API_VERSION}/graphql.json`, {
-    method: "POST",
-    headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" },
-    body: JSON.stringify({ query, variables }),
-  });
-  const json = await res.json();
-  if (json.errors) {
-    const msg = Array.isArray(json.errors)
-      ? json.errors.map((e) => e.message ?? String(e)).join(", ")
-      : JSON.stringify(json.errors);
-    throw new Error(msg);
-  }
-  return json.data;
-}
-
-async function fetchAllPaidOrders() {
-  const query = `
-    query getPaidOrders($first: Int!, $after: String) {
-      orders(first: $first, after: $after, query: "financial_status:paid") {
-        pageInfo { hasNextPage endCursor }
-        edges {
-          node {
-            name
-            lineItems(first: 20) {
-              edges {
-                node {
-                  title
-                  quantity
-                  originalUnitPriceSet { shopMoney { amount } }
-                  variant { title sku }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  `;
-  const all = [];
-  let cursor = null;
-  let hasNextPage = true;
-  while (hasNextPage) {
-    const data = await shopifyFetch(query, { first: 250, after: cursor });
-    for (const { node } of data.orders.edges) all.push(node);
-    hasNextPage = data.orders.pageInfo.hasNextPage;
-    cursor = data.orders.pageInfo.endCursor;
-  }
-  return all;
-}
 
 function inferCategory(title) {
   const t = title.toLowerCase();
@@ -127,50 +119,39 @@ function extractSize(variantTitle) {
 }
 
 async function main() {
-  console.log("Running inventory rebuild from paid orders...");
-
-  const orders = await fetchAllPaidOrders();
-  console.log(`Fetched ${orders.length} paid orders from Shopify.`);
+  console.log("Running inventory rebuild from static paid-order data...");
 
   let created = 0;
   let missingCost = 0;
-  for (const order of orders) {
-    const orderNo = order.name.replace("#", "");
-    for (const { node: li } of order.lineItems.edges) {
-      const rawVariant = li.variant?.title;
-      const isDefault = !rawVariant || rawVariant === "Default Title";
-      const variantLabel = isDefault ? null : rawVariant;
-      const sku = li.variant?.sku || null;
-      const nameFull = variantLabel ? `${li.title} (${variantLabel})` : li.title;
-      const priceEGP = li.originalUnitPriceSet?.shopMoney?.amount
-        ? parseFloat(li.originalUnitPriceSet.shopMoney.amount)
-        : null;
-      const size = extractSize(variantLabel);
 
-      const costEGP = sku && COST_BY_SKU[sku] != null ? COST_BY_SKU[sku] : null;
-      if (costEGP == null) missingCost++;
+  for (const item of LINE_ITEMS) {
+    const isDefault = !item.variantTitle || item.variantTitle === "Default Title";
+    const variantLabel = isDefault ? null : item.variantTitle;
+    const nameFull = variantLabel ? `${item.title} (${variantLabel})` : item.title;
+    const size = extractSize(variantLabel);
+    const costEGP = item.sku && COST_BY_SKU[item.sku] != null ? COST_BY_SKU[item.sku] : null;
+    if (costEGP == null) missingCost++;
 
-      await db.inventoryItem.create({
-        data: {
-          name: nameFull,
-          sku: sku || null,
-          category: inferCategory(nameFull),
-          material: "Sterling Silver",
-          weightG: 0,
-          colors: [],
-          size: size ?? undefined,
-          quantity: li.quantity,
-          costEGP,
-          priceEGP,
-          status: "SOLD",
-          orderNo,
-        },
-      });
-      created++;
-    }
+    await db.inventoryItem.create({
+      data: {
+        name: nameFull,
+        sku: item.sku || null,
+        category: inferCategory(nameFull),
+        material: "Sterling Silver",
+        weightG: 0,
+        colors: [],
+        size: size ?? undefined,
+        quantity: item.quantity,
+        costEGP,
+        priceEGP: item.priceEGP,
+        status: "SOLD",
+        orderNo: item.orderNo,
+      },
+    });
+    created++;
   }
 
-  console.log(`Done. Created ${created} SOLD items (${missingCost} without cost data) from ${orders.length} paid orders.`);
+  console.log(`Done. Created ${created} SOLD items (${missingCost} without cost data) from static order data.`);
 }
 
 main()
