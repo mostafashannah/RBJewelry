@@ -5,6 +5,7 @@
  */
 import { existsSync, readFileSync } from "fs";
 import { PrismaClient } from "@prisma/client";
+import { google } from "googleapis";
 
 if (existsSync(".env.local")) {
   for (const line of readFileSync(".env.local", "utf8").split("\n")) {
@@ -101,6 +102,78 @@ const LINE_ITEMS = [
 
 const db = new PrismaClient();
 
+async function buildPhotoMap(prisma) {
+  try {
+    const products = await prisma.shopifyProductCache.findMany({
+      select: { imageUrl: true, rawJson: true },
+    });
+    const map = new Map();
+    for (const product of products) {
+      if (!product.imageUrl) continue;
+      const variants = product.rawJson?.variants;
+      if (Array.isArray(variants)) {
+        for (const v of variants) {
+          if (v.sku) map.set(v.sku.toLowerCase(), product.imageUrl);
+        }
+      }
+    }
+    console.log(`Photo map: ${map.size} SKU entries`);
+    return map;
+  } catch (err) {
+    console.warn("Photo map build failed:", err.message);
+    return new Map();
+  }
+}
+
+async function readWeightsFromSheets() {
+  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  const key = process.env.GOOGLE_PRIVATE_KEY;
+  const sheetId = process.env.GOOGLE_SHEETS_STOCK_ID;
+  if (!email || !key || !sheetId) {
+    console.warn("Google creds not set — skipping weight lookup");
+    return new Map();
+  }
+  try {
+    const auth = new google.auth.JWT({
+      email,
+      key: key.replace(/\\n/g, "\n"),
+      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    });
+    const sheets = google.sheets({ version: "v4", auth });
+    const tabs = ["Inventory", "Cost", "Costs", "Products", "Stock", "Sheet1"];
+    let rows = null;
+    for (const tab of tabs) {
+      try {
+        const res = await sheets.spreadsheets.values.get({
+          spreadsheetId: sheetId,
+          range: `${tab}!A1:Z300`,
+        });
+        if (res.data.values?.length > 1) { rows = res.data.values; console.log(`Weight sheet tab: ${tab}`); break; }
+      } catch { /* try next */ }
+    }
+    if (!rows || rows.length < 2) { console.warn("No sheet rows for weights"); return new Map(); }
+    const headers = rows[0].map((h) => String(h ?? "").toLowerCase().trim());
+    const skuIdx    = headers.findIndex((h) => h === "sku" || h === "كود" || h.includes("sku"));
+    const weightIdx = headers.findIndex((h) => h.includes("weight") || h.includes("وزن"));
+    if (skuIdx === -1 || weightIdx === -1) {
+      console.warn(`Weight col not found. Headers: ${headers.join(", ")}`);
+      return new Map();
+    }
+    const map = new Map();
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const sku = String(row[skuIdx] ?? "").trim();
+      const w   = parseFloat(String(row[weightIdx] ?? "").trim());
+      if (sku && !isNaN(w) && w > 0) map.set(sku.toLowerCase(), w);
+    }
+    console.log(`Weight map: ${map.size} SKU entries`);
+    return map;
+  } catch (err) {
+    console.warn("Weight sheet read failed:", err.message);
+    return new Map();
+  }
+}
+
 function inferCategory(title) {
   const t = title.toLowerCase();
   if (t.includes("earring")) return "Earrings";
@@ -121,6 +194,11 @@ function extractSize(variantTitle) {
 async function main() {
   console.log("Running inventory rebuild from static paid-order data...");
 
+  const [photoMap, weightMap] = await Promise.all([
+    buildPhotoMap(db),
+    readWeightsFromSheets(),
+  ]);
+
   let created = 0;
   let missingCost = 0;
 
@@ -132,13 +210,17 @@ async function main() {
     const costEGP = item.sku && COST_BY_SKU[item.sku] != null ? COST_BY_SKU[item.sku] : null;
     if (costEGP == null) missingCost++;
 
+    const skuLower = item.sku?.toLowerCase() ?? "";
+    const photoUrl = skuLower ? (photoMap.get(skuLower) ?? null) : null;
+    const weightG  = skuLower ? (weightMap.get(skuLower) ?? 0) : 0;
+
     await db.inventoryItem.create({
       data: {
         name: nameFull,
         sku: item.sku || null,
         category: inferCategory(nameFull),
         material: "Sterling Silver",
-        weightG: 0,
+        weightG,
         colors: [],
         size: size ?? undefined,
         quantity: item.quantity,
@@ -146,6 +228,7 @@ async function main() {
         priceEGP: item.priceEGP,
         status: "SOLD",
         orderNo: item.orderNo,
+        photoUrl,
       },
     });
     created++;

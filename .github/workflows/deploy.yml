@@ -46,6 +46,9 @@ jobs:
           VAPID_PRIVATE_KEY="${{ secrets.VAPID_PRIVATE_KEY }}"
           VAPID_SUBJECT="mailto:support@rbjewelry.co"
           ADMIN_PASSWORD="${{ secrets.ADMIN_PASSWORD || 'RBJewelry2025!' }}"
+          GOOGLE_SERVICE_ACCOUNT_EMAIL="${{ secrets.GOOGLE_SERVICE_ACCOUNT_EMAIL }}"
+          GOOGLE_PRIVATE_KEY="${{ secrets.GOOGLE_PRIVATE_KEY }}"
+          GOOGLE_SHEETS_STOCK_ID="${{ secrets.GOOGLE_SHEETS_STOCK_ID }}"
           ENVEOF
 
       - name: Install dependencies
@@ -63,6 +66,9 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
           SHOPIFY_ADMIN_API_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ADMIN_API_ACCESS_TOKEN }}
+          GOOGLE_SERVICE_ACCOUNT_EMAIL: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_EMAIL }}
+          GOOGLE_PRIVATE_KEY: ${{ secrets.GOOGLE_PRIVATE_KEY }}
+          GOOGLE_SHEETS_STOCK_ID: ${{ secrets.GOOGLE_SHEETS_STOCK_ID }}
 
       - name: Build
         run: npm run build
