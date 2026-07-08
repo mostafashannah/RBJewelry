@@ -50,10 +50,14 @@ async function fetchSilverPrice(): Promise<number | null> {
 }
 
 export async function GET() {
-  const [items, pricePerOz] = await Promise.all([
+  const [items, soldItems, pricePerOz] = await Promise.all([
     db.inventoryItem.findMany({
       where: { status: "IN_STOCK", material: { contains: "Silver" } },
       select: { weightG: true, quantity: true, priceEGP: true },
+    }),
+    db.inventoryItem.findMany({
+      where: { status: "SOLD" },
+      select: { weightG: true, quantity: true, costEGP: true },
     }),
     fetchSilverPrice(),
   ]);
@@ -67,6 +71,11 @@ export async function GET() {
   const pricePerGram = pricePerOz ? pricePerOz * TROY_OZ_PER_GRAM : null;
   const silverValueUSD = pricePerGram ? pureSilverG * pricePerGram : null;
 
+  const soldTotalWeightG = soldItems.reduce((s, i) => s + i.weightG * i.quantity, 0);
+  const soldTotalCostEGP = soldItems
+    .filter((i) => i.costEGP != null)
+    .reduce((s, i) => s + (i.costEGP ?? 0) * i.quantity, 0);
+
   return NextResponse.json({
     totalItems: items.length,
     totalWeightG: Math.round(totalWeightG * 100) / 100,
@@ -79,5 +88,8 @@ export async function GET() {
           silverValueUSD: Math.round((silverValueUSD ?? 0) * 100) / 100,
         }
       : null,
+    soldItems: soldItems.length,
+    soldTotalWeightG: Math.round(soldTotalWeightG * 100) / 100,
+    soldTotalCostEGP: Math.round(soldTotalCostEGP),
   });
 }

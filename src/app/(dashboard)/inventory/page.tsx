@@ -61,6 +61,7 @@ interface SilverData {
   totalItems: number; totalWeightG: number; pureSilverG: number;
   totalListingValueEGP: number;
   spot: { pricePerOzUSD: number; pricePerGramUSD: number; silverValueUSD: number } | null;
+  soldItems: number; soldTotalWeightG: number; soldTotalCostEGP: number;
 }
 
 const emptyForm = {
@@ -423,6 +424,33 @@ export default function InventoryPage() {
         )}
       </div>
 
+      {/* Sold Summary */}
+      {silver && (silver.soldItems > 0 || silver.soldTotalWeightG > 0) && (
+        <div className="bg-white border border-zinc-100 rounded-2xl p-4 mb-5">
+          <div className="flex items-center gap-2 mb-3">
+            <ShoppingBag size={14} className="text-zinc-400" />
+            <span className="text-xs font-medium text-zinc-700">Sold Items Summary</span>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Items Sold</p>
+              <p className="text-base font-semibold text-zinc-900">{silver.soldItems.toLocaleString()}</p>
+              <p className="text-[10px] text-zinc-400">pieces</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Total Weight</p>
+              <p className="text-base font-semibold text-zinc-900">{silver.soldTotalWeightG.toLocaleString()}g</p>
+              <p className="text-[10px] text-zinc-400">silver used</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Total Metal Cost</p>
+              <p className="text-base font-semibold text-zinc-900">{silver.soldTotalCostEGP.toLocaleString()} EGP</p>
+              <p className="text-[10px] text-zinc-400">cost of goods sold</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex gap-1.5 mb-5 flex-wrap">
         {["all", ...STATUSES].map((s) => (
@@ -453,6 +481,7 @@ export default function InventoryPage() {
                 )}
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                   <button onClick={() => openEdit(item)} className="p-1.5 bg-white rounded-lg"><Edit2 size={13} className="text-zinc-700" /></button>
+                  <button onClick={() => openEdit(item)} title="Add photo" className="p-1.5 bg-white rounded-lg"><Camera size={13} className="text-zinc-500" /></button>
                   <button onClick={() => deleteItem(item.id)} className="p-1.5 bg-white rounded-lg"><Trash2 size={13} className="text-red-500" /></button>
                 </div>
                 {item.orderNo && (

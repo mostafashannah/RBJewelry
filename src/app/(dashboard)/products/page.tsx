@@ -3,6 +3,14 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { RefreshCw, ShoppingBag, Eye, ArrowUpDown } from "lucide-react";
 import Image from "next/image";
 
+interface ShopifyVariantRaw {
+  id?: number;
+  title?: string;
+  sku?: string;
+  price?: string;
+  inventory_quantity?: number;
+}
+
 interface Product {
   id: string;
   handle: string;
@@ -12,7 +20,10 @@ interface Product {
   imageUrl: string | null;
   available: boolean;
   tags: string[];
-  rawJson: { productType?: string; variants?: { edges?: { node?: { inventoryQuantity?: number } }[] }[] };
+  rawJson: {
+    productType?: string;
+    variants?: ShopifyVariantRaw[] | { edges?: { node?: { inventoryQuantity?: number; sku?: string; title?: string } }[] };
+  };
 }
 
 interface ProductAnalytics {
@@ -206,14 +217,23 @@ export default function ProductsPage() {
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {sortedProducts.map((p) => {
-            // rawJson is stored in REST format: variants is a flat array with inventory_quantity
-            // (not GraphQL edges). Support both shapes for forward compatibility.
-            const raw = p.rawJson as { productType?: string; variants?: unknown };
+            const raw = p.rawJson;
             const rawVariants = raw?.variants;
-            const variantNodes: { inventoryQuantity?: number }[] = Array.isArray(rawVariants)
-              ? (rawVariants as { inventory_quantity?: number }[]).map((v) => ({ inventoryQuantity: v.inventory_quantity }))
-              : ((rawVariants as { edges?: { node?: { inventoryQuantity?: number } }[] })?.edges ?? []).map((e) => e?.node ?? {});
-            const totalQty = variantNodes.reduce((s, v) => s + (v?.inventoryQuantity ?? 0), 0);
+            // Support both REST (flat array) and GraphQL (edges) shapes
+            const variants: { title: string; sku: string; qty: number }[] = Array.isArray(rawVariants)
+              ? (rawVariants as ShopifyVariantRaw[]).map((v) => ({
+                  title: v.title ?? "",
+                  sku: v.sku ?? "",
+                  qty: v.inventory_quantity ?? 0,
+                }))
+              : ((rawVariants as { edges?: { node?: { inventoryQuantity?: number; sku?: string; title?: string } }[] })?.edges ?? []).map((e) => ({
+                  title: e?.node?.title ?? "",
+                  sku: e?.node?.sku ?? "",
+                  qty: e?.node?.inventoryQuantity ?? 0,
+                }));
+
+            const totalQty = variants.reduce((s, v) => s + v.qty, 0);
+            const isDefault = variants.length === 1 && variants[0].title === "Default Title";
             const price = p.priceMin === p.priceMax
               ? `${p.priceMin.toLocaleString()} EGP`
               : `${p.priceMin.toLocaleString()}–${p.priceMax.toLocaleString()} EGP`;
@@ -222,9 +242,8 @@ export default function ProductsPage() {
             const orders = stat?.orders ?? 0;
             const views  = stat?.views  ?? 0;
 
-            const rawProductType = (raw as { productType?: string })?.productType;
             return (
-              <div key={p.id} className="bg-white border border-zinc-100 rounded-xl overflow-hidden">
+              <div key={p.id} className="bg-white border border-zinc-100 rounded-xl overflow-hidden flex flex-col">
                 {p.imageUrl ? (
                   <div className="aspect-square relative bg-zinc-50">
                     <Image src={p.imageUrl} alt={p.title} fill className="object-cover" sizes="200px" unoptimized />
@@ -234,21 +253,42 @@ export default function ProductsPage() {
                     <ShoppingBag size={28} className="text-zinc-200" />
                   </div>
                 )}
-                <div className="p-3">
+                <div className="p-3 flex flex-col flex-1">
                   <p className="text-sm font-medium text-zinc-900 truncate">{p.title}</p>
                   <p className="text-xs font-semibold text-zinc-700 mt-0.5">{price}</p>
 
-                  {/* Stock + type */}
+                  {/* Total stock badge */}
                   <div className="flex items-center gap-1.5 mt-1.5">
                     <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                       totalQty > 0 || p.available ? "bg-green-50 text-green-700" : "bg-red-50 text-red-500"
                     }`}>
                       {totalQty > 0 ? `${totalQty} in stock` : p.available ? "Available" : "Out of stock"}
                     </span>
-                    {rawProductType && (
-                      <span className="text-[10px] text-zinc-400">{rawProductType}</span>
-                    )}
                   </div>
+
+                  {/* Variants / SKUs */}
+                  {!isDefault && variants.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-zinc-50 space-y-0.5 flex-1">
+                      {variants.map((v, i) => (
+                        <div key={i} className="flex items-center justify-between gap-1">
+                          <div className="flex items-center gap-1 min-w-0">
+                            <span className="text-[10px] text-zinc-500 font-mono truncate">{v.sku || "—"}</span>
+                            {v.title && v.title !== "Default Title" && (
+                              <span className="text-[10px] text-zinc-400 shrink-0">· {v.title}</span>
+                            )}
+                          </div>
+                          <span className={`text-[10px] font-medium shrink-0 ${v.qty > 0 ? "text-emerald-600" : "text-zinc-300"}`}>
+                            {v.qty}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {isDefault && variants[0]?.sku && (
+                    <div className="mt-1.5">
+                      <span className="text-[10px] text-zinc-400 font-mono">{variants[0].sku}</span>
+                    </div>
+                  )}
 
                   {/* Analytics badges */}
                   <div className="flex items-center gap-2 mt-2 pt-2 border-t border-zinc-50">
