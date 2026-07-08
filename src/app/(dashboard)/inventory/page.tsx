@@ -71,9 +71,9 @@ function parseVariantTitle(vt: string, fo1: string, fo2: string): { opt1: string
 }
 
 type AddMode = "existing" | "new-color" | "new";
-type ShopifyVariantEntry = { title: string; sku: string; price: number; qty: number };
-type ShopifyProductEntry = { id: string; title: string; imageUrl: string | null; variants: ShopifyVariantEntry[]; defaultSku: string; defaultPrice: number };
-type ShopifyGroupOption = { opt1: string; opt2: string; sku: string; price: number };
+type ShopifyVariantEntry = { title: string; sku: string; price: number; qty: number; weightG: number };
+type ShopifyProductEntry = { id: string; title: string; imageUrl: string | null; variants: ShopifyVariantEntry[]; defaultSku: string; defaultPrice: number; defaultWeightG: number };
+type ShopifyGroupOption = { opt1: string; opt2: string; sku: string; price: number; weightG: number };
 type ShopifyGroup = { baseName: string; imageUrl: string | null; options: ShopifyGroupOption[] };
 type SkuMeta = {
   byCategory: Record<string, Array<{ id: string; name: string; sku: string | null; priceEGP: number | null }>>;
@@ -177,11 +177,11 @@ export default function InventoryPage() {
         for (const v of realVariants) {
           const { opt1, opt2 } = parseVariantTitle(v.title, embeddedOpt1, embeddedOpt2);
           if (!g.options.some((o) => o.opt1 === opt1 && o.opt2 === opt2))
-            g.options.push({ opt1, opt2, sku: v.sku, price: v.price });
+            g.options.push({ opt1, opt2, sku: v.sku, price: v.price, weightG: v.weightG });
         }
       } else {
         if (!g.options.some((o) => o.opt1 === embeddedOpt1 && o.opt2 === embeddedOpt2))
-          g.options.push({ opt1: embeddedOpt1, opt2: embeddedOpt2, sku: p.defaultSku, price: p.defaultPrice });
+          g.options.push({ opt1: embeddedOpt1, opt2: embeddedOpt2, sku: p.defaultSku, price: p.defaultPrice, weightG: p.defaultWeightG });
       }
     }
     return map;
@@ -331,6 +331,7 @@ export default function InventoryPage() {
           name: selectedBaseName,
           sku: matched?.sku ?? f.sku,
           priceEGP: matched?.price ? String(matched.price) : f.priceEGP,
+          weightG: matched?.weightG ? String(matched.weightG) : f.weightG,
         }));
       }
       return;
@@ -645,7 +646,7 @@ export default function InventoryPage() {
                     </div>
                     <p className="text-[10px] text-zinc-400 font-normal">{item.category}</p>
                   </td>
-                  <td className="px-3 py-2 text-zinc-500">{item.colors?.join(", ") || "—"}</td>
+                  <td className="px-3 py-2 text-zinc-500">{item.colors?.length > 0 ? item.colors.join(", ") : "Main"}</td>
                   <td className="px-3 py-2 text-zinc-500 whitespace-nowrap">{item.weightG}g</td>
                   <td className="px-3 py-2 text-zinc-500">{item.costEGP ? `${item.costEGP.toLocaleString()}` : "—"}</td>
                   <td className="px-3 py-2 font-medium text-zinc-900">{item.priceEGP ? `${item.priceEGP.toLocaleString()}` : "—"}</td>
@@ -919,8 +920,8 @@ export default function InventoryPage() {
                     </div>
                   )}
 
-                  {/* Size dropdown (ring / bracelet / anklet) */}
-                  {SIZE_CATS.includes(form.category) && (
+                  {/* Size dropdown (ring / bracelet / anklet) — hidden in "existing" which shows Shopify size chips */}
+                  {SIZE_CATS.includes(form.category) && addMode !== "existing" && (
                     <div>
                       <label className="text-xs font-medium text-zinc-600 block mb-1">Size</label>
                       <div className="flex flex-wrap gap-1.5">
@@ -1028,22 +1029,24 @@ export default function InventoryPage() {
                 </div>
               )}
 
-              {/* Colors */}
-              <div>
-                <label className="text-xs font-medium text-zinc-600 block mb-2">Colors</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {COLORS_LIST.map((color) => (
-                    <button key={color} type="button" onClick={() => toggleColor(color)}
-                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                        form.colors.includes(color)
-                          ? "bg-zinc-900 text-white border-zinc-900"
-                          : "border-zinc-200 text-zinc-500 hover:border-zinc-400"
-                      }`}>
-                      {color}
-                    </button>
-                  ))}
+              {/* Colors — hidden in "existing" add mode which uses Shopify color chips instead */}
+              {(editItem || addMode !== "existing") && (
+                <div>
+                  <label className="text-xs font-medium text-zinc-600 block mb-2">Colors</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {COLORS_LIST.map((color) => (
+                      <button key={color} type="button" onClick={() => toggleColor(color)}
+                        className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                          form.colors.includes(color)
+                            ? "bg-zinc-900 text-white border-zinc-900"
+                            : "border-zinc-200 text-zinc-500 hover:border-zinc-400"
+                        }`}>
+                        {color}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Weight + Qty (size already in smart section for add mode) */}
               <div className={`grid gap-3 ${editItem ? "grid-cols-3" : "grid-cols-2"}`}>

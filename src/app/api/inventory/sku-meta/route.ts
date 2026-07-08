@@ -7,7 +7,7 @@ const CAT_PREFIX: Record<string, string> = {
   Set: "S", Anklet: "A", Other: "O",
 };
 
-type RawVariant = { title?: string; sku?: string; price?: string; inventory_quantity?: number };
+type RawVariant = { title?: string; sku?: string; price?: string; inventory_quantity?: number; grams?: number };
 
 export async function GET() {
   const [items, shopifyRows] = await Promise.all([
@@ -55,12 +55,14 @@ export async function GET() {
         sku: v.sku ?? "",
         price: parseFloat(v.price ?? "0"),
         qty: v.inventory_quantity ?? 0,
+        weightG: v.grams ?? 0,
       }))
       .filter((v) => v.title && v.title !== "Default Title");
     return {
       id: p.id, title: p.title, imageUrl: p.imageUrl, variants,
       defaultSku: firstVariant?.sku ?? "",
       defaultPrice: parseFloat(firstVariant?.price ?? "0") || p.priceMin,
+      defaultWeightG: firstVariant?.grams ?? 0,
     };
   });
 
