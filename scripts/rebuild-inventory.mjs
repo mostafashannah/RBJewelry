@@ -174,6 +174,21 @@ async function readWeightsFromSheets() {
   }
 }
 
+const COLOR_CODE_MAP = {
+  P: "Pink", GR: "Green", Y: "Yellow", BL: "Blue",
+  B: "Blue", G: "Gold", R: "Red",
+};
+
+function inferColors(sku) {
+  if (!sku) return [];
+  const colors = [];
+  for (const part of sku.split("-")) {
+    const color = COLOR_CODE_MAP[part.toUpperCase()];
+    if (color && !colors.includes(color)) colors.push(color);
+  }
+  return colors;
+}
+
 function inferCategory(title) {
   const t = title.toLowerCase();
   if (t.includes("earring")) return "Earrings";
@@ -221,7 +236,7 @@ async function main() {
         category: inferCategory(nameFull),
         material: "Sterling Silver",
         weightG,
-        colors: [],
+        colors: inferColors(item.sku),
         size: size ?? undefined,
         quantity: item.quantity,
         costEGP,
