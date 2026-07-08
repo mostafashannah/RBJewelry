@@ -4,25 +4,23 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-const dbUrl = process.env.DATABASE_URL
-  ? process.env.DATABASE_URL.includes("?")
-    ? `${process.env.DATABASE_URL}&connection_limit=1&pool_timeout=20&connect_timeout=30`
-    : `${process.env.DATABASE_URL}?connection_limit=1&pool_timeout=20&connect_timeout=30`
-  : undefined;
+function buildUrl() {
+  const base = process.env.DATABASE_URL;
+  if (!base) return undefined;
+  const sep = base.includes("?") ? "&" : "?";
+  // connection_limit=5: allow concurrent requests on long-running server
+  // socket_timeout=30: detect dead connections before Prisma engine panics
+  return `${base}${sep}connection_limit=5&pool_timeout=30&connect_timeout=30&socket_timeout=30`;
+}
 
 function createClient() {
-  try {
-    return new PrismaClient({
-      datasources: dbUrl ? { db: { url: dbUrl } } : undefined,
-      log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-    });
-  } catch (err) {
-    console.error("[db] PrismaClient instantiation failed:", err);
-    // Return a minimal proxy so imports don't crash — queries will fail at call time
-    return new PrismaClient();
-  }
+  const url = buildUrl();
+  return new PrismaClient({
+    datasources: url ? { db: { url } } : undefined,
+    log: ["error"],
+  });
 }
 
 export const db = globalForPrisma.prisma ?? createClient();
-
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+// Always persist singleton — prevents multiple engine processes across module reloads
+globalForPrisma.prisma = db;

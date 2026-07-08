@@ -37,9 +37,12 @@ function sizeFromItem(item: { size?: string | null; sku?: string | null }): stri
 }
 
 type AddMode = "existing" | "new-color" | "new";
+type ShopifyVariantEntry = { title: string; sku: string; price: number; qty: number };
+type ShopifyProductEntry = { id: string; title: string; imageUrl: string | null; variants: ShopifyVariantEntry[] };
 type SkuMeta = {
   byCategory: Record<string, Array<{ id: string; name: string; sku: string | null; priceEGP: number | null }>>;
   nextNumbers: Record<string, number>;
+  shopifyProducts: ShopifyProductEntry[];
 };
 const STATUSES = ["IN_STOCK", "SOLD", "RESERVED", "DAMAGED"] as const;
 const STATUS_LABELS: Record<string, string> = { IN_STOCK: "In Stock", SOLD: "Sold", RESERVED: "Reserved", DAMAGED: "Damaged" };
@@ -109,6 +112,10 @@ export default function InventoryPage() {
   const [selectedProduct, setSelectedProduct] = useState<SkuMeta["byCategory"][string][0] | null>(null);
   const [selectedColorCode, setSelectedColorCode] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
+  // For "existing" mode — driven by real Shopify variant data
+  const [selectedShopifyProduct, setSelectedShopifyProduct] = useState<ShopifyProductEntry | null>(null);
+  const [selectedOpt1, setSelectedOpt1] = useState("");
+  const [selectedOpt2, setSelectedOpt2] = useState("");
 
   const fetchSkuMeta = useCallback(async () => {
     const res = await fetch("/api/inventory/sku-meta");
@@ -224,6 +231,7 @@ export default function InventoryPage() {
     setEditItem(null); setForm({ ...emptyForm }); setPhotoUrl(null); setAiHints([]);
     setShopifySuggestions([]); setShowSuggestions(false);
     setAddMode("existing"); setSelectedProduct(null); setSelectedColorCode(""); setSelectedSize("");
+    setSelectedShopifyProduct(null); setSelectedOpt1(""); setSelectedOpt2("");
     fetchSkuMeta();
     setShowAdd(true);
   };
@@ -244,12 +252,20 @@ export default function InventoryPage() {
   // Auto-generate SKU when smart-add fields change
   useEffect(() => {
     if (editItem) return;
-    if (addMode === "existing" && selectedProduct) {
+    if (addMode === "existing" && selectedShopifyProduct) {
+      // Find matching variant from the selected Shopify options
+      const matched = selectedShopifyProduct.variants.find((v) => {
+        const parts = v.title.split(" / ");
+        if (selectedOpt1 && parts[0] !== selectedOpt1) return false;
+        if (selectedOpt2 && parts[1] !== selectedOpt2) return false;
+        return true;
+      }) ?? (selectedShopifyProduct.variants[0] ?? null);
+
       setForm((f) => ({
         ...f,
-        name: selectedProduct.name,
-        sku: selectedProduct.sku ?? "",
-        priceEGP: selectedProduct.priceEGP != null ? String(selectedProduct.priceEGP) : f.priceEGP,
+        name: selectedShopifyProduct.title,
+        sku: matched?.sku ?? f.sku,
+        priceEGP: matched?.price ? String(matched.price) : f.priceEGP,
       }));
       return;
     }
@@ -276,7 +292,7 @@ export default function InventoryPage() {
       setForm((f) => ({ ...f, sku, size: selectedSize }));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addMode, selectedProduct, selectedColorCode, selectedSize, form.category, skuMeta, editItem]);
+  }, [addMode, selectedProduct, selectedColorCode, selectedSize, form.category, skuMeta, editItem, selectedShopifyProduct, selectedOpt1, selectedOpt2]);
 
   const save = async () => {
     if (!form.name || !form.weightG) return;
@@ -716,7 +732,7 @@ export default function InventoryPage() {
                         { key: "new", label: "Brand new item" },
                       ] as { key: AddMode; label: string }[]).map(({ key, label }) => (
                         <button key={key} type="button"
-                          onClick={() => { setAddMode(key); setSelectedProduct(null); setSelectedColorCode(""); setSelectedSize(""); }}
+                          onClick={() => { setAddMode(key); setSelectedProduct(null); setSelectedColorCode(""); setSelectedSize(""); setSelectedShopifyProduct(null); setSelectedOpt1(""); setSelectedOpt2(""); }}
                           className={`text-[11px] px-2 py-2 rounded-xl border transition-colors text-center leading-tight ${addMode === key ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500 hover:border-zinc-400"}`}>
                           {label}
                         </button>
@@ -734,24 +750,69 @@ export default function InventoryPage() {
                     </select>
                   </div>
 
-                  {/* Existing product picker */}
-                  {addMode === "existing" && (
-                    <div>
-                      <label className="text-xs font-medium text-zinc-600 block mb-1">Product</label>
-                      <select
-                        value={selectedProduct?.id ?? ""}
-                        onChange={(e) => {
-                          const list = skuMeta?.byCategory[form.category] ?? [];
-                          setSelectedProduct(list.find((p) => p.id === e.target.value) ?? null);
-                        }}
-                        className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400">
-                        <option value="">— select product —</option>
-                        {(skuMeta?.byCategory[form.category] ?? []).map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}{p.priceEGP ? ` — ${p.priceEGP.toLocaleString()} EGP` : ""}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
+                  {/* Existing product picker — names only from Shopify, then real option chips */}
+                  {addMode === "existing" && (() => {
+                    const opt1Values = selectedShopifyProduct
+                      ? [...new Set(selectedShopifyProduct.variants.map((v) => v.title.split(" / ")[0]).filter(Boolean))]
+                      : [];
+                    const opt2Values = selectedShopifyProduct
+                      ? [...new Set(selectedShopifyProduct.variants.map((v) => v.title.split(" / ")[1]).filter(Boolean))]
+                      : [];
+                    const isSize = (vals: string[]) => vals.some((v) => /^\d+$/.test(v) || /^(OS|One Size|XS|S|M|L|XL)$/i.test(v));
+                    return (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-xs font-medium text-zinc-600 block mb-1">Product</label>
+                          <select
+                            value={selectedShopifyProduct?.id ?? ""}
+                            onChange={(e) => {
+                              const p = (skuMeta?.shopifyProducts ?? []).find((x) => x.id === e.target.value) ?? null;
+                              setSelectedShopifyProduct(p);
+                              setSelectedOpt1("");
+                              setSelectedOpt2("");
+                            }}
+                            className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400">
+                            <option value="">— select product —</option>
+                            {(skuMeta?.shopifyProducts ?? []).map((p) => (
+                              <option key={p.id} value={p.id}>{p.title}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {opt1Values.length > 0 && (
+                          <div>
+                            <label className="text-xs font-medium text-zinc-600 block mb-2">
+                              {isSize(opt1Values) ? "Size" : "Option"}
+                            </label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {opt1Values.map((v) => (
+                                <button key={v} type="button"
+                                  onClick={() => setSelectedOpt1(selectedOpt1 === v ? "" : v)}
+                                  className={`text-xs px-3 py-1.5 rounded-xl border transition-colors ${selectedOpt1 === v ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500 hover:border-zinc-400"}`}>
+                                  {v}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {opt2Values.length > 0 && (
+                          <div>
+                            <label className="text-xs font-medium text-zinc-600 block mb-2">Color</label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {opt2Values.map((v) => (
+                                <button key={v} type="button"
+                                  onClick={() => setSelectedOpt2(selectedOpt2 === v ? "" : v)}
+                                  className={`text-xs px-3 py-1.5 rounded-xl border transition-colors ${selectedOpt2 === v ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500 hover:border-zinc-400"}`}>
+                                  {v}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* New-color: base product picker */}
                   {addMode === "new-color" && (

@@ -7,13 +7,21 @@ const CAT_PREFIX: Record<string, string> = {
   Set: "S", Anklet: "A", Other: "O",
 };
 
-export async function GET() {
-  const items = await db.inventoryItem.findMany({
-    select: { id: true, name: true, sku: true, category: true, priceEGP: true },
-    orderBy: { name: "asc" },
-  });
+type RawVariant = { title?: string; sku?: string; price?: string; inventory_quantity?: number };
 
-  // Unique products per category (dedup by name)
+export async function GET() {
+  const [items, shopifyRows] = await Promise.all([
+    db.inventoryItem.findMany({
+      select: { id: true, name: true, sku: true, category: true, priceEGP: true },
+      orderBy: { name: "asc" },
+    }),
+    db.shopifyProductCache.findMany({
+      select: { id: true, title: true, imageUrl: true, rawJson: true },
+      orderBy: { title: "asc" },
+    }),
+  ]);
+
+  // Unique products per category (dedup by name) — used by new-color / new modes
   const byCategory: Record<string, Array<{ id: string; name: string; sku: string | null; priceEGP: number | null }>> = {};
   const seen = new Set<string>();
   for (const item of items) {
@@ -36,5 +44,19 @@ export async function GET() {
     nextNumbers[prefix] = max + 1;
   }
 
-  return NextResponse.json({ byCategory, nextNumbers });
+  // Shopify products with their real variants — used by existing mode
+  const shopifyProducts = shopifyRows.map((p) => {
+    const raw = p.rawJson as { variants?: RawVariant[] } | null;
+    const variants = (raw?.variants ?? [])
+      .map((v) => ({
+        title: v.title ?? "",
+        sku: v.sku ?? "",
+        price: parseFloat(v.price ?? "0"),
+        qty: v.inventory_quantity ?? 0,
+      }))
+      .filter((v) => v.title && v.title !== "Default Title");
+    return { id: p.id, title: p.title, imageUrl: p.imageUrl, variants };
+  });
+
+  return NextResponse.json({ byCategory, nextNumbers, shopifyProducts });
 }
