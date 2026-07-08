@@ -16,7 +16,7 @@ export async function GET() {
       orderBy: { name: "asc" },
     }),
     db.shopifyProductCache.findMany({
-      select: { id: true, title: true, imageUrl: true, rawJson: true },
+      select: { id: true, title: true, imageUrl: true, rawJson: true, priceMin: true },
       orderBy: { title: "asc" },
     }),
   ]);
