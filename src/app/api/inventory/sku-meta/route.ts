@@ -7,6 +7,22 @@ const CAT_PREFIX: Record<string, string> = {
   Set: "S", Anklet: "A", Other: "O",
 };
 
+// Fallback weights by main SKU (grams) — used when Shopify variant has no grams set
+const WEIGHT_BY_MAIN_SKU: Record<string, number> = {
+  R00001: 2.38, R00002: 5.62, R00003: 3.79, R00004: 5.36,
+  R00005: 1.60, R00006: 6.62, R00007: 2.20, R00008: 5.37,
+  R00009: 4.85, R00010: 1.22, R00011: 2.66, R00012: 2.98,
+  B00001: 6.34, B00002: 6.63, B00003: 8.29,
+  E00001: 7.79, E00002: 5.78,
+  N00001: 18.68,
+};
+
+function mainSkuWeight(sku: string | undefined): number {
+  if (!sku) return 0;
+  const m = sku.match(/^([A-Z]\d{5})/);
+  return m ? (WEIGHT_BY_MAIN_SKU[m[1]] ?? 0) : 0;
+}
+
 type RawVariant = { title?: string; sku?: string; price?: string; inventory_quantity?: number; grams?: number };
 
 export async function GET() {
@@ -50,19 +66,20 @@ export async function GET() {
     const allVariants = raw?.variants ?? [];
     const firstVariant = allVariants[0];
     const variants = allVariants
-      .map((v) => ({
-        title: v.title ?? "",
-        sku: v.sku ?? "",
-        price: parseFloat(v.price ?? "0"),
-        qty: v.inventory_quantity ?? 0,
-        weightG: v.grams ?? 0,
-      }))
+      .map((v) => {
+        const shopifyG = v.grams ?? 0;
+        const weightG = shopifyG > 0 ? shopifyG : mainSkuWeight(v.sku);
+        return { title: v.title ?? "", sku: v.sku ?? "", price: parseFloat(v.price ?? "0"), qty: v.inventory_quantity ?? 0, weightG };
+      })
       .filter((v) => v.title && v.title !== "Default Title");
+    const defaultWeightG = (firstVariant?.grams ?? 0) > 0
+      ? firstVariant!.grams!
+      : mainSkuWeight(firstVariant?.sku);
     return {
       id: p.id, title: p.title, imageUrl: p.imageUrl, variants,
       defaultSku: firstVariant?.sku ?? "",
       defaultPrice: parseFloat(firstVariant?.price ?? "0") || p.priceMin,
-      defaultWeightG: firstVariant?.grams ?? 0,
+      defaultWeightG,
     };
   });
 
