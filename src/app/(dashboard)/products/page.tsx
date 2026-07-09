@@ -36,6 +36,8 @@ type SortBy = "default" | "best_selling" | "most_viewed";
 type DateRange = "all" | "today" | "yesterday" | "week" | "month";
 type ViewMode = "grid" | "list";
 
+type StatsSource = "inventory" | "shopify";
+
 const DATE_RANGES: { key: DateRange; label: string }[] = [
   { key: "all",       label: "All Time"   },
   { key: "month",     label: "Last 30d"   },
@@ -70,6 +72,8 @@ export default function ProductsPage() {
   const router = useRouter();
   const [products, setProducts]                 = useState<Product[]>([]);
   const [analytics, setAnalytics]               = useState<Record<string, ProductAnalytics>>({});
+  const [soldCounts, setSoldCounts]             = useState<Record<string, number>>({});
+  const [statsSource, setStatsSource]           = useState<StatsSource>("shopify");
   const [loading, setLoading]                   = useState(true);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [analyticsError, setAnalyticsError]     = useState(false);
@@ -107,10 +111,28 @@ export default function ProductsPage() {
     setAnalyticsLoading(false);
   }, []);
 
+  const loadSoldCounts = useCallback(async (range: DateRange) => {
+    setAnalyticsLoading(true);
+    setAnalyticsError(false);
+    try {
+      const res = await fetch(`/api/inventory/best-selling?range=${range}`);
+      const data = await res.json();
+      if (!res.ok || data.error) setAnalyticsError(true);
+      else setSoldCounts(data.soldCounts ?? {});
+    } catch { setAnalyticsError(true); }
+    setAnalyticsLoading(false);
+  }, []);
+
   useEffect(() => { loadProducts(); }, [loadProducts]);
   useEffect(() => {
-    if (sortBy !== "default") loadAnalytics(dateRange);
-  }, [sortBy, dateRange, loadAnalytics]);
+    if (sortBy === "best_selling") {
+      setStatsSource("inventory");
+      loadSoldCounts(dateRange);
+    } else if (sortBy === "most_viewed") {
+      setStatsSource("shopify");
+      loadAnalytics(dateRange);
+    }
+  }, [sortBy, dateRange, loadAnalytics, loadSoldCounts]);
 
   const sync = async () => {
     setSyncing(true); setSyncMsg("");
@@ -145,7 +167,7 @@ export default function ProductsPage() {
     Object.values(analytics).every((v) => v.views === 0);
 
   const sortedProducts = [...products].sort((a, b) => {
-    if (sortBy === "best_selling") return (analytics[b.id]?.orders ?? 0) - (analytics[a.id]?.orders ?? 0);
+    if (sortBy === "best_selling") return (soldCounts[b.id] ?? 0) - (soldCounts[a.id] ?? 0);
     if (sortBy === "most_viewed") {
       if (allViewsZero) return (analytics[b.id]?.orders ?? 0) - (analytics[a.id]?.orders ?? 0);
       return (analytics[b.id]?.views ?? 0) - (analytics[a.id]?.views ?? 0);
@@ -280,18 +302,25 @@ export default function ProductsPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 mt-auto pt-2">
-                    <span className={`flex items-center gap-1 text-[10px] font-medium ${
-                      (stat?.orders ?? 0) > 0 ? "text-zinc-700" : "text-zinc-300"
-                    }`}>
-                      <ShoppingBag size={10} />
-                      {analyticsLoading ? "—" : analyticsError ? "—" : (stat?.orders ?? 0)}
-                    </span>
-                    <span className={`flex items-center gap-1 text-[10px] font-medium ${
-                      (stat?.views ?? 0) > 0 ? "text-zinc-500" : "text-zinc-300"
-                    }`}>
-                      <Eye size={10} />
-                      {analyticsLoading ? "—" : analyticsError ? "—" : (stat?.views ?? 0)}
-                    </span>
+                    {sortBy !== "default" && (
+                      <span className={`flex items-center gap-1 text-[10px] font-medium ${
+                        (statsSource === "inventory" ? (soldCounts[p.id] ?? 0) : (stat?.orders ?? 0)) > 0
+                          ? "text-zinc-700" : "text-zinc-300"
+                      }`}>
+                        <ShoppingBag size={10} />
+                        {analyticsLoading ? "—" : analyticsError ? "—"
+                          : statsSource === "inventory" ? (soldCounts[p.id] ?? 0)
+                          : (stat?.orders ?? 0)}
+                      </span>
+                    )}
+                    {sortBy === "most_viewed" && (
+                      <span className={`flex items-center gap-1 text-[10px] font-medium ${
+                        (stat?.views ?? 0) > 0 ? "text-zinc-500" : "text-zinc-300"
+                      }`}>
+                        <Eye size={10} />
+                        {analyticsLoading ? "—" : analyticsError ? "—" : (stat?.views ?? 0)}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -340,12 +369,22 @@ export default function ProductsPage() {
                     {totalQty > 0 ? totalQty : p.available ? "In" : "Out"}
                   </span>
                   <div className="flex items-center gap-1.5">
-                    <span className={`flex items-center gap-0.5 text-[10px] ${(stat?.orders ?? 0) > 0 ? "text-zinc-500" : "text-zinc-300"}`}>
-                      <ShoppingBag size={9} />{analyticsLoading ? "—" : (stat?.orders ?? 0)}
-                    </span>
-                    <span className={`flex items-center gap-0.5 text-[10px] ${(stat?.views ?? 0) > 0 ? "text-zinc-400" : "text-zinc-300"}`}>
-                      <Eye size={9} />{analyticsLoading ? "—" : (stat?.views ?? 0)}
-                    </span>
+                    {sortBy !== "default" && (
+                      <span className={`flex items-center gap-0.5 text-[10px] ${
+                        (statsSource === "inventory" ? (soldCounts[p.id] ?? 0) : (stat?.orders ?? 0)) > 0
+                          ? "text-zinc-500" : "text-zinc-300"
+                      }`}>
+                        <ShoppingBag size={9} />
+                        {analyticsLoading ? "—"
+                          : statsSource === "inventory" ? (soldCounts[p.id] ?? 0)
+                          : (stat?.orders ?? 0)}
+                      </span>
+                    )}
+                    {sortBy === "most_viewed" && (
+                      <span className={`flex items-center gap-0.5 text-[10px] ${(stat?.views ?? 0) > 0 ? "text-zinc-400" : "text-zinc-300"}`}>
+                        <Eye size={9} />{analyticsLoading ? "—" : (stat?.views ?? 0)}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
