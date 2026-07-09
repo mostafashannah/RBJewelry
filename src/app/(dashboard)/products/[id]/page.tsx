@@ -87,7 +87,7 @@ function groupByColor(variants: ParsedVariant[]): ColorGroup[] {
     map[key].push(v);
   }
 
-  return order.map((color, idx) => {
+  return order.map((color) => {
     const vlist = map[color];
     // Find the first variant in this color group that has an image
     const imgVariant = vlist.find((v) => v.imageUrl);
