@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   Plus, Camera, X, Scale, Tag, Package, Loader2, CheckCircle,
   Trash2, Edit2, Upload, FileSpreadsheet, Sparkles, AlertCircle,
@@ -115,6 +116,7 @@ const emptyForm = {
 };
 
 export default function InventoryPage() {
+  const router = useRouter();
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -624,7 +626,7 @@ export default function InventoryPage() {
             </thead>
             <tbody>
               {items.map((item, i) => (
-                <tr key={item.id} className={`border-t border-zinc-50 hover:bg-zinc-50/50 ${i % 2 === 0 ? "" : "bg-zinc-50/30"}`}>
+                <tr key={item.id} onClick={() => router.push(`/inventory/${item.id}`)} className={`border-t border-zinc-50 hover:bg-zinc-50/50 cursor-pointer ${i % 2 === 0 ? "" : "bg-zinc-50/30"}`}>
                   <td className="px-4 py-2">
                     {item.photoUrl ? (
                       <img src={item.photoUrl} alt={item.name} className="w-9 h-9 rounded-lg object-cover" />
@@ -658,15 +660,15 @@ export default function InventoryPage() {
                     ) : "—"}
                   </td>
                   <td className="px-3 py-2">
-                    <select value={item.status} onChange={(e) => changeStatus(item.id, e.target.value)}
+                    <select value={item.status} onClick={e => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); changeStatus(item.id, e.target.value); }}
                       className={`text-[10px] px-2 py-0.5 rounded-full border-0 font-medium cursor-pointer ${STATUS_COLORS[item.status]}`}>
                       {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
                     </select>
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex gap-1">
-                      <button onClick={() => openEdit(item)} className="p-1 text-zinc-400 hover:text-zinc-700"><Edit2 size={13} /></button>
-                      <button onClick={() => deleteItem(item.id)} className="p-1 text-zinc-400 hover:text-red-500"><Trash2 size={13} /></button>
+                      <button onClick={e => { e.stopPropagation(); openEdit(item); }} className="p-1 text-zinc-400 hover:text-zinc-700"><Edit2 size={13} /></button>
+                      <button onClick={e => { e.stopPropagation(); deleteItem(item.id); }} className="p-1 text-zinc-400 hover:text-red-500"><Trash2 size={13} /></button>
                     </div>
                   </td>
                 </tr>
