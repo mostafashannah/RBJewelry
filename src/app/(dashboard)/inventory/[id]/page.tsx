@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  ArrowLeft, Package, Scale, Tag, ShoppingBag, Hash,
-  Calendar, Pencil, Save, X, Plus, Loader2, AlertCircle,
+  ArrowLeft, Package, Tag, ShoppingBag, Hash,
+  Calendar, Pencil, X, Plus, Loader2, AlertCircle,
 } from "lucide-react";
 
 interface Item {
