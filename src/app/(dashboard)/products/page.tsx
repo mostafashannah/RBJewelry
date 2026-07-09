@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { RefreshCw, ShoppingBag, Eye, ArrowUpDown } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { RefreshCw, ShoppingBag, Eye, ArrowUpDown, LayoutGrid, List } from "lucide-react";
 import Image from "next/image";
 
 interface ShopifyVariantRaw {
@@ -33,6 +34,7 @@ interface ProductAnalytics {
 
 type SortBy = "default" | "best_selling" | "most_viewed";
 type DateRange = "all" | "today" | "yesterday" | "week" | "month";
+type ViewMode = "grid" | "list";
 
 const DATE_RANGES: { key: DateRange; label: string }[] = [
   { key: "all",       label: "All Time"   },
@@ -43,24 +45,42 @@ const DATE_RANGES: { key: DateRange; label: string }[] = [
 ];
 
 const SORTS: { key: SortBy; label: string }[] = [
-  { key: "default",     label: "Default"      },
-  { key: "best_selling", label: "Best Selling" },
-  { key: "most_viewed", label: "Most Viewed"   },
+  { key: "default",      label: "Default"      },
+  { key: "best_selling", label: "Best Selling"  },
+  { key: "most_viewed",  label: "Most Viewed"   },
 ];
 
+function getVariants(raw: Product["rawJson"]): { title: string; sku: string; qty: number }[] {
+  const rawVariants = raw?.variants;
+  if (Array.isArray(rawVariants)) {
+    return (rawVariants as ShopifyVariantRaw[]).map((v) => ({
+      title: v.title ?? "",
+      sku: v.sku ?? "",
+      qty: v.inventory_quantity ?? 0,
+    }));
+  }
+  return ((rawVariants as { edges?: { node?: { inventoryQuantity?: number; sku?: string; title?: string } }[] })?.edges ?? []).map((e) => ({
+    title: e?.node?.title ?? "",
+    sku: e?.node?.sku ?? "",
+    qty: e?.node?.inventoryQuantity ?? 0,
+  }));
+}
+
 export default function ProductsPage() {
-  const [products, setProducts]             = useState<Product[]>([]);
-  const [analytics, setAnalytics]           = useState<Record<string, ProductAnalytics>>({});
-  const [loading, setLoading]               = useState(true);
+  const router = useRouter();
+  const [products, setProducts]                 = useState<Product[]>([]);
+  const [analytics, setAnalytics]               = useState<Record<string, ProductAnalytics>>({});
+  const [loading, setLoading]                   = useState(true);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [analyticsError, setAnalyticsError]     = useState(false);
-  const [syncing, setSyncing]               = useState(false);
-  const [syncMsg, setSyncMsg]               = useState("");
-  const [syncOk, setSyncOk]                 = useState(true);
-  const [sortBy, setSortBy]                 = useState<SortBy>("default");
-  const [dateRange, setDateRange]           = useState<DateRange>("all");
-  const [pullY, setPullY]                   = useState(0);
-  const [pulling, setPulling]               = useState(false);
+  const [syncing, setSyncing]                   = useState(false);
+  const [syncMsg, setSyncMsg]                   = useState("");
+  const [syncOk, setSyncOk]                     = useState(true);
+  const [sortBy, setSortBy]                     = useState<SortBy>("default");
+  const [dateRange, setDateRange]               = useState<DateRange>("all");
+  const [view, setView]                         = useState<ViewMode>("grid");
+  const [pullY, setPullY]                       = useState(0);
+  const [pulling, setPulling]                   = useState(false);
   const startYRef = useRef(0);
   const mainRef   = useRef<HTMLDivElement>(null);
 
@@ -109,7 +129,6 @@ export default function ProductsPage() {
     setTimeout(() => setSyncMsg(""), 6000);
   };
 
-  // Pull to refresh
   const onTouchStart = (e: React.TouchEvent) => {
     if ((mainRef.current?.scrollTop ?? 0) === 0) startYRef.current = e.touches[0].clientY;
   };
@@ -126,9 +145,7 @@ export default function ProductsPage() {
     Object.values(analytics).every((v) => v.views === 0);
 
   const sortedProducts = [...products].sort((a, b) => {
-    if (sortBy === "best_selling") {
-      return (analytics[b.id]?.orders ?? 0) - (analytics[a.id]?.orders ?? 0);
-    }
+    if (sortBy === "best_selling") return (analytics[b.id]?.orders ?? 0) - (analytics[a.id]?.orders ?? 0);
     if (sortBy === "most_viewed") {
       if (allViewsZero) return (analytics[b.id]?.orders ?? 0) - (analytics[a.id]?.orders ?? 0);
       return (analytics[b.id]?.views ?? 0) - (analytics[a.id]?.views ?? 0);
@@ -140,7 +157,6 @@ export default function ProductsPage() {
     <div ref={mainRef} className="p-4 md:p-8 overflow-auto h-full"
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
 
-      {/* Pull indicator */}
       {pulling && (
         <div className="flex justify-center mb-2" style={{ marginTop: pullY - 40 }}>
           <RefreshCw size={16} className={`text-zinc-400 transition-transform ${pullY > 50 ? "animate-spin" : ""}`}
@@ -154,20 +170,32 @@ export default function ProductsPage() {
           <h1 className="text-xl font-semibold text-zinc-900">Products</h1>
           <p className="text-sm text-zinc-500 mt-0.5">{products.length} products from Shopify</p>
         </div>
-        <button onClick={sync} disabled={syncing}
-          className="flex items-center gap-1.5 text-xs px-3 py-2 border border-zinc-200 rounded-xl hover:bg-zinc-50 text-zinc-600 disabled:opacity-40 transition-colors">
-          <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
-          {syncing ? "Syncing…" : "Sync Products"}
-        </button>
+        <div className="flex items-center gap-2">
+          {/* View toggle */}
+          <div className="flex items-center border border-zinc-200 rounded-xl overflow-hidden">
+            <button onClick={() => setView("grid")}
+              className={`p-2 transition-colors ${view === "grid" ? "bg-zinc-900 text-white" : "text-zinc-400 hover:bg-zinc-50"}`}>
+              <LayoutGrid size={14} />
+            </button>
+            <button onClick={() => setView("list")}
+              className={`p-2 transition-colors ${view === "list" ? "bg-zinc-900 text-white" : "text-zinc-400 hover:bg-zinc-50"}`}>
+              <List size={14} />
+            </button>
+          </div>
+          <button onClick={sync} disabled={syncing}
+            className="flex items-center gap-1.5 text-xs px-3 py-2 border border-zinc-200 rounded-xl hover:bg-zinc-50 text-zinc-600 disabled:opacity-40 transition-colors">
+            <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "Syncing…" : "Sync"}
+          </button>
+        </div>
       </div>
 
       {syncMsg && (
         <p className={`text-xs rounded-lg px-4 py-2 mb-4 ${syncOk ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"}`}>{syncMsg}</p>
       )}
 
-      {/* Sort + Date Range Controls */}
+      {/* Sort + Date Range */}
       <div className="mb-4 flex flex-col gap-3">
-        {/* Sort */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="flex items-center gap-1 text-xs text-zinc-400 font-medium">
             <ArrowUpDown size={11} /> Sort
@@ -183,8 +211,6 @@ export default function ProductsPage() {
             </button>
           ))}
         </div>
-
-        {/* Date range — visible when any sort is active */}
         {sortBy !== "default" && (
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-zinc-400 font-medium w-9">When</span>
@@ -209,41 +235,26 @@ export default function ProductsPage() {
         )}
       </div>
 
-      {/* Grid */}
       {loading ? (
         <div className="flex justify-center h-40 items-center">
           <RefreshCw size={16} className="text-zinc-300 animate-spin" />
         </div>
-      ) : (
+      ) : view === "grid" ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {sortedProducts.map((p) => {
-            const raw = p.rawJson;
-            const rawVariants = raw?.variants;
-            // Support both REST (flat array) and GraphQL (edges) shapes
-            const variants: { title: string; sku: string; qty: number }[] = Array.isArray(rawVariants)
-              ? (rawVariants as ShopifyVariantRaw[]).map((v) => ({
-                  title: v.title ?? "",
-                  sku: v.sku ?? "",
-                  qty: v.inventory_quantity ?? 0,
-                }))
-              : ((rawVariants as { edges?: { node?: { inventoryQuantity?: number; sku?: string; title?: string } }[] })?.edges ?? []).map((e) => ({
-                  title: e?.node?.title ?? "",
-                  sku: e?.node?.sku ?? "",
-                  qty: e?.node?.inventoryQuantity ?? 0,
-                }));
-
+            const variants = getVariants(p.rawJson);
             const totalQty = variants.reduce((s, v) => s + v.qty, 0);
             const isDefault = variants.length === 1 && variants[0].title === "Default Title";
+            const variantCount = isDefault ? 0 : variants.length;
             const price = p.priceMin === p.priceMax
               ? `${p.priceMin.toLocaleString()} EGP`
               : `${p.priceMin.toLocaleString()}–${p.priceMax.toLocaleString()} EGP`;
-
             const stat = analytics[p.id];
-            const orders = stat?.orders ?? 0;
-            const views  = stat?.views  ?? 0;
 
             return (
-              <div key={p.id} className="bg-white border border-zinc-100 rounded-xl overflow-hidden flex flex-col">
+              <div key={p.id}
+                onClick={() => router.push(`/products/${p.id}`)}
+                className="bg-white border border-zinc-100 rounded-xl overflow-hidden flex flex-col cursor-pointer hover:shadow-md hover:border-zinc-200 transition-all">
                 {p.imageUrl ? (
                   <div className="aspect-square relative bg-zinc-50">
                     <Image src={p.imageUrl} alt={p.title} fill className="object-cover" sizes="200px" unoptimized />
@@ -256,53 +267,84 @@ export default function ProductsPage() {
                 <div className="p-3 flex flex-col flex-1">
                   <p className="text-sm font-medium text-zinc-900 truncate">{p.title}</p>
                   <p className="text-xs font-semibold text-zinc-700 mt-0.5">{price}</p>
-
-                  {/* Total stock badge */}
-                  <div className="flex items-center gap-1.5 mt-1.5">
+                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                     <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                       totalQty > 0 || p.available ? "bg-green-50 text-green-700" : "bg-red-50 text-red-500"
                     }`}>
                       {totalQty > 0 ? `${totalQty} in stock` : p.available ? "Available" : "Out of stock"}
                     </span>
+                    {variantCount > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-zinc-100 text-zinc-500">
+                        {variantCount} variant{variantCount !== 1 ? "s" : ""}
+                      </span>
+                    )}
                   </div>
-
-                  {/* Variants / SKUs */}
-                  {!isDefault && variants.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-zinc-50 space-y-0.5 flex-1">
-                      {variants.map((v, i) => (
-                        <div key={i} className="flex items-center justify-between gap-1">
-                          <div className="flex items-center gap-1 min-w-0">
-                            <span className="text-[10px] text-zinc-500 font-mono truncate">{v.sku || "—"}</span>
-                            {v.title && v.title !== "Default Title" && (
-                              <span className="text-[10px] text-zinc-400 shrink-0">· {v.title}</span>
-                            )}
-                          </div>
-                          <span className={`text-[10px] font-medium shrink-0 ${v.qty > 0 ? "text-emerald-600" : "text-zinc-300"}`}>
-                            {v.qty}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {isDefault && variants[0]?.sku && (
-                    <div className="mt-1.5">
-                      <span className="text-[10px] text-zinc-400 font-mono">{variants[0].sku}</span>
-                    </div>
-                  )}
-
-                  {/* Analytics badges */}
-                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-zinc-50">
+                  <div className="flex items-center gap-2 mt-auto pt-2">
                     <span className={`flex items-center gap-1 text-[10px] font-medium ${
-                      orders > 0 ? "text-zinc-700" : "text-zinc-300"
+                      (stat?.orders ?? 0) > 0 ? "text-zinc-700" : "text-zinc-300"
                     }`}>
                       <ShoppingBag size={10} />
-                      {analyticsLoading ? "—" : analyticsError ? "—" : orders}
+                      {analyticsLoading ? "—" : analyticsError ? "—" : (stat?.orders ?? 0)}
                     </span>
                     <span className={`flex items-center gap-1 text-[10px] font-medium ${
-                      views > 0 ? "text-zinc-500" : "text-zinc-300"
+                      (stat?.views ?? 0) > 0 ? "text-zinc-500" : "text-zinc-300"
                     }`}>
                       <Eye size={10} />
-                      {analyticsLoading ? "—" : analyticsError ? "—" : views}
+                      {analyticsLoading ? "—" : analyticsError ? "—" : (stat?.views ?? 0)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* List view */
+        <div className="space-y-1">
+          {sortedProducts.map((p) => {
+            const variants = getVariants(p.rawJson);
+            const totalQty = variants.reduce((s, v) => s + v.qty, 0);
+            const isDefault = variants.length === 1 && variants[0].title === "Default Title";
+            const variantCount = isDefault ? 0 : variants.length;
+            const price = p.priceMin === p.priceMax
+              ? `${p.priceMin.toLocaleString()} EGP`
+              : `${p.priceMin.toLocaleString()}–${p.priceMax.toLocaleString()} EGP`;
+            const stat = analytics[p.id];
+
+            return (
+              <div key={p.id}
+                onClick={() => router.push(`/products/${p.id}`)}
+                className="bg-white border border-zinc-100 rounded-xl flex items-center gap-3 p-3 cursor-pointer hover:shadow-sm hover:border-zinc-200 transition-all">
+                {p.imageUrl ? (
+                  <div className="w-12 h-12 relative bg-zinc-50 rounded-lg flex-shrink-0 overflow-hidden">
+                    <Image src={p.imageUrl} alt={p.title} fill className="object-cover" sizes="48px" unoptimized />
+                  </div>
+                ) : (
+                  <div className="w-12 h-12 bg-zinc-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <ShoppingBag size={18} className="text-zinc-200" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-zinc-900 truncate">{p.title}</p>
+                  <p className="text-xs text-zinc-500 mt-0.5">{price}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {variantCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500 font-medium">
+                      {variantCount}v
+                    </span>
+                  )}
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                    totalQty > 0 || p.available ? "bg-green-50 text-green-700" : "bg-red-50 text-red-500"
+                  }`}>
+                    {totalQty > 0 ? totalQty : p.available ? "In" : "Out"}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`flex items-center gap-0.5 text-[10px] ${(stat?.orders ?? 0) > 0 ? "text-zinc-500" : "text-zinc-300"}`}>
+                      <ShoppingBag size={9} />{analyticsLoading ? "—" : (stat?.orders ?? 0)}
+                    </span>
+                    <span className={`flex items-center gap-0.5 text-[10px] ${(stat?.views ?? 0) > 0 ? "text-zinc-400" : "text-zinc-300"}`}>
+                      <Eye size={9} />{analyticsLoading ? "—" : (stat?.views ?? 0)}
                     </span>
                   </div>
                 </div>

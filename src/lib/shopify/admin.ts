@@ -81,10 +81,12 @@ const PRODUCTS_QUERY = `
                 sku
                 inventoryQuantity
                 inventoryItem { id }
+                image { url altText }
+                selectedOptions { name value }
               }
             }
           }
-          images(first: 1) {
+          images(first: 10) {
             edges { node { url altText } }
           }
         }
@@ -93,6 +95,13 @@ const PRODUCTS_QUERY = `
   }
 `;
 
+type GQLVariantNode = {
+  id: string; title: string; price: string; compareAtPrice?: string | null;
+  sku: string; inventoryQuantity: number; inventoryItem: { id: string };
+  image?: { url: string; altText: string | null } | null;
+  selectedOptions?: { name: string; value: string }[];
+};
+
 export async function getProducts(limit = 50, afterCursor?: string): Promise<{ products: ShopifyProduct[] }> {
   const data = await shopifyGraphQL<{
     products: {
@@ -100,7 +109,7 @@ export async function getProducts(limit = 50, afterCursor?: string): Promise<{ p
       edges: { node: {
         id: string; title: string; handle: string; status: string;
         descriptionHtml: string; tags: string[]; productType: string; vendor: string;
-        variants: { edges: { node: { id: string; title: string; price: string; sku: string; inventoryQuantity: number; inventoryItem: { id: string } } }[] };
+        variants: { edges: { node: GQLVariantNode }[] };
         images: { edges: { node: { url: string; altText: string | null } }[] };
       } }[];
     };
@@ -119,10 +128,12 @@ export async function getProducts(limit = 50, afterCursor?: string): Promise<{ p
       id: parseInt(v.id.replace("gid://shopify/ProductVariant/", "")),
       title: v.title,
       price: v.price,
-      compare_at_price: (v as { compareAtPrice?: string | null }).compareAtPrice ?? null,
+      compare_at_price: v.compareAtPrice ?? null,
       sku: v.sku,
       inventory_quantity: v.inventoryQuantity,
       inventory_item_id: parseInt(v.inventoryItem.id.replace("gid://shopify/InventoryItem/", "")),
+      image: v.image ? { src: v.image.url, alt: v.image.altText } : null,
+      selectedOptions: v.selectedOptions ?? [],
     })),
     images: node.images.edges.map(({ node: img }) => ({ src: img.url, alt: img.altText })),
   }));
@@ -848,6 +859,8 @@ export interface ShopifyVariant {
   sku: string;
   inventory_quantity: number;
   inventory_item_id: number;
+  image?: { src: string; alt: string | null } | null;
+  selectedOptions?: { name: string; value: string }[];
 }
 
 export interface ShopifyOrder {
