@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/lib/db";
 import { getProductContextString } from "./product-context";
+import { getBusinessContextString } from "./business-context";
 import { buildSystemPrompt, CORE_RULES } from "./system-prompt";
 import { sendInstagramDM, sendInstagramImage, replyToInstagramComment } from "@/lib/meta/instagram";
 import { sendWhatsAppMessage, sendWhatsAppImage } from "@/lib/meta/whatsapp";
@@ -597,14 +598,17 @@ export async function processInboundMessage(conversationId: string, inboundMessa
 }
 
 export async function generateAnalyticsAnswer(question: string): Promise<string> {
-  const productContext = await getProductContextString();
+  const businessContext = await getBusinessContextString();
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 800,
-    system: `You are a business analytics assistant for RB Jewelry, an Egyptian jewelry brand.
-Answer business questions using the data provided. Be concise and actionable.
-Current product catalog: ${productContext}`,
+    max_tokens: 1000,
+    system: `You are an internal business assistant for RB Jewelry, an Egyptian sterling silver jewelry brand.
+You have full access to the business data below: orders, inventory (sold and in-stock), finances, and product catalog.
+Answer the owner's questions directly and concisely using this data. Be specific with numbers.
+If asked about an order number, look it up in the ORDERS section.
+
+${businessContext}`,
     messages: [{ role: "user", content: question }],
   });
 
