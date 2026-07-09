@@ -181,6 +181,22 @@ async function readWeightsFromSheets() {
   }
 }
 
+// Weight per main SKU in grams — fallback when Google Sheets creds not set
+const WEIGHT_BY_MAIN_SKU = {
+  R00001: 2.38, R00002: 5.62, R00003: 3.79, R00004: 5.36,
+  R00005: 1.60, R00006: 6.62, R00007: 2.20, R00008: 5.37,
+  R00009: 4.85, R00010: 1.22, R00011: 2.66, R00012: 2.98,
+  B00001: 6.34, B00002: 6.63, B00003: 8.29,
+  E00001: 7.79, E00002: 5.78,
+  N00001: 18.68,
+};
+
+function mainSkuWeight(sku) {
+  if (!sku) return 0;
+  const m = sku.match(/^([A-Z]\d{5})/);
+  return m ? (WEIGHT_BY_MAIN_SKU[m[1]] ?? 0) : 0;
+}
+
 const COLOR_CODE_MAP = {
   P: "Pink", GR: "Green", Y: "Yellow", BL: "Blue",
   B: "Blue", G: "Gold", R: "Red",
@@ -234,7 +250,7 @@ async function main() {
 
     const skuLower = item.sku?.toLowerCase() ?? "";
     const photoUrl = skuLower ? (photoMap.get(skuLower) ?? null) : null;
-    const weightG  = skuLower ? (weightMap.get(skuLower) ?? 0) : 0;
+    const weightG  = skuLower ? (weightMap.get(skuLower) || mainSkuWeight(item.sku)) : 0;
 
     await db.inventoryItem.create({
       data: {

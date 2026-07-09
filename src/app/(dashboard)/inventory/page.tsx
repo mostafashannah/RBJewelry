@@ -128,7 +128,7 @@ export default function InventoryPage() {
   const [editItem, setEditItem] = useState<Item | null>(null);
   const [silver, setSilver] = useState<SilverData | null>(null);
   const [silverLoading, setSilverLoading] = useState(false);
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [view, setView] = useState<"grid" | "list">("list");
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Import sheet state
