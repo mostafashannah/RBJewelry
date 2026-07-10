@@ -77,6 +77,7 @@ interface CostSettings {
   manufacturing: { mode: "percentage" | "per_gram"; pct: number; perGram: number };
   plating: Record<string, number>;
   packaging: { fixed: number };
+  usdEgpRate: number;
 }
 
 const DEFAULT_COST_SETTINGS: CostSettings = {
@@ -84,6 +85,7 @@ const DEFAULT_COST_SETTINGS: CostSettings = {
   manufacturing: { mode: "percentage", pct: 10, perGram: 5 },
   plating: { Ring: 15, Earrings: 20, Necklace: 25, Bracelet: 20, Anklet: 15, Set: 30, Other: 10 },
   packaging: { fixed: 75 },
+  usdEgpRate: 50,
 };
 
 type AddMode = "existing" | "new-color" | "new";
@@ -406,9 +408,10 @@ export default function InventoryPage() {
   useEffect(() => {
     if (editItem) return;
     const w = parseFloat(form.weightG);
-    if (!w || w <= 0 || !costSettings || !silver?.spot || !silver?.usdEgpRate) return;
+    if (!w || w <= 0 || !costSettings || !silver?.spot) return;
 
-    const silverPerGramEGP = silver.spot.pricePerGramUSD * silver.usdEgpRate;
+    const egpRate = silver.usdEgpRate ?? costSettings.usdEgpRate;
+    const silverPerGramEGP = silver.spot.pricePerGramUSD * egpRate;
     const metalCost = Math.round(w * 0.925 * silverPerGramEGP * (1 + costSettings.metal.markupPct / 100));
     const mfgCost = costSettings.manufacturing.mode === "percentage"
       ? Math.round(metalCost * costSettings.manufacturing.pct / 100)
@@ -875,6 +878,24 @@ export default function InventoryPage() {
             </div>
             <div className="p-5 space-y-5">
 
+              {/* USD/EGP Rate */}
+              <div>
+                <p className="text-xs font-semibold text-zinc-700 mb-1">USD → EGP Rate</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-500 w-28 shrink-0">Fallback rate</span>
+                  <input type="number" min="1" step="1"
+                    value={draftSettings.usdEgpRate}
+                    onChange={(e) => setDraftSettings((s) => ({ ...s, usdEgpRate: parseFloat(e.target.value) || 50 }))}
+                    className="flex-1 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zinc-400" />
+                  <span className="text-xs text-zinc-400">EGP</span>
+                </div>
+                <p className="text-[10px] text-zinc-400 mt-1">
+                  {silver?.usdEgpRate
+                    ? <>Live rate: {silver.usdEgpRate.toFixed(1)} EGP/USD (used automatically)</>
+                    : <>Live rate unavailable — fallback rate above will be used</>}
+                </p>
+              </div>
+
               {/* Metal */}
               <div>
                 <p className="text-xs font-semibold text-zinc-700 mb-1">Metal (925 Silver)</p>
@@ -889,10 +910,10 @@ export default function InventoryPage() {
                     className="flex-1 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zinc-400" />
                   <span className="text-xs text-zinc-400">%</span>
                 </div>
-                {silver?.spot && silver?.usdEgpRate && (
+                {silver?.spot && (
                   <p className="text-[10px] text-zinc-400 mt-1">
-                    Live: ${silver.spot.pricePerGramUSD}/g × {silver.usdEgpRate.toFixed(0)} EGP/USD
-                    = {Math.round(silver.spot.pricePerGramUSD * silver.usdEgpRate * (1 + draftSettings.metal.markupPct / 100))} EGP/g effective
+                    Live: ${silver.spot.pricePerGramUSD}/g × {(silver.usdEgpRate ?? draftSettings.usdEgpRate).toFixed(0)} EGP/USD
+                    = {Math.round(silver.spot.pricePerGramUSD * (silver.usdEgpRate ?? draftSettings.usdEgpRate) * (1 + draftSettings.metal.markupPct / 100))} EGP/g effective
                   </p>
                 )}
               </div>
