@@ -220,8 +220,13 @@ function ItemCard({ index, shopifyGroups, skuMeta, silver, settings, status, onR
 
   const baseNames = Array.from(shopifyGroups.keys()).sort();
   const currentGroup = selectedBaseName ? shopifyGroups.get(selectedBaseName) : null;
-  const allOpt1s = currentGroup ? Array.from(new Set(currentGroup.options.map((o) => o.opt1).filter(Boolean))) : [];
-  const allOpt2s = currentGroup ? Array.from(new Set(currentGroup.options.map((o) => o.opt2).filter(Boolean))) : [];
+  const allOpt1s = currentGroup
+    ? Array.from(new Set(currentGroup.options.map((o) => o.opt1).filter(Boolean)))
+        .sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0) || a.localeCompare(b))
+    : [];
+  const allOpt2s = currentGroup
+    ? Array.from(new Set(currentGroup.options.map((o) => o.opt2).filter(Boolean))).sort()
+    : [];
 
   const borderColor = status?.ok ? "border-emerald-300 bg-emerald-50/40"
     : status ? "border-red-300 bg-red-50/40"
@@ -299,17 +304,13 @@ function ItemCard({ index, shopifyGroups, skuMeta, silver, settings, status, onR
             </div>
           </div>
 
-          {/* Opt1 (size) chips for existing */}
-          {addMode === "existing" && currentGroup && allOpt1s.length > 0 && (
+          {/* Opt1 (size) chips — only actual variants, no "Any" */}
+          {addMode === "existing" && allOpt1s.length > 0 && (
             <div>
               <label className="text-xs text-zinc-500 font-medium block mb-1">Size</label>
               <div className="flex flex-wrap gap-1.5">
-                <button type="button" onClick={() => setSelectedOpt1("")}
-                  className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${selectedOpt1 === "" ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-400"}`}>
-                  Any
-                </button>
                 {allOpt1s.map((v) => (
-                  <button key={v} type="button" onClick={() => setSelectedOpt1(v)}
+                  <button key={v} type="button" onClick={() => setSelectedOpt1(selectedOpt1 === v ? "" : v)}
                     className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${selectedOpt1 === v ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500"}`}>
                     {v}
                   </button>
@@ -318,17 +319,13 @@ function ItemCard({ index, shopifyGroups, skuMeta, silver, settings, status, onR
             </div>
           )}
 
-          {/* Opt2 (color) chips for existing */}
-          {addMode === "existing" && currentGroup && allOpt2s.length > 0 && (
+          {/* Opt2 (color) chips — only actual variants, no "Any" */}
+          {addMode === "existing" && allOpt2s.length > 0 && (
             <div>
-              <label className="text-xs text-zinc-500 font-medium block mb-1">Color variant</label>
+              <label className="text-xs text-zinc-500 font-medium block mb-1">Color</label>
               <div className="flex flex-wrap gap-1.5">
-                <button type="button" onClick={() => setSelectedOpt2("")}
-                  className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${selectedOpt2 === "" ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-400"}`}>
-                  Any
-                </button>
                 {allOpt2s.map((v) => (
-                  <button key={v} type="button" onClick={() => setSelectedOpt2(v)}
+                  <button key={v} type="button" onClick={() => setSelectedOpt2(selectedOpt2 === v ? "" : v)}
                     className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${selectedOpt2 === v ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500"}`}>
                     {v}
                   </button>
@@ -384,18 +381,20 @@ function ItemCard({ index, shopifyGroups, skuMeta, silver, settings, status, onR
             </div>
           )}
 
-          {/* Colors (stored) */}
-          <div>
-            <label className="text-xs text-zinc-500 font-medium block mb-1">Colors (stored)</label>
-            <div className="flex flex-wrap gap-1.5">
-              {(addMode === "existing" && allOpt2s.length > 0 ? allOpt2s : COLORS_LIST).map((color) => (
-                <button key={color} type="button" onClick={() => toggleColor(color)}
-                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${form.colors.includes(color) ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500"}`}>
-                  {color}
-                </button>
-              ))}
+          {/* Colors (stored) — hidden in existing mode; colors come from opt2 variant selection */}
+          {addMode !== "existing" && (
+            <div>
+              <label className="text-xs text-zinc-500 font-medium block mb-1">Colors (stored)</label>
+              <div className="flex flex-wrap gap-1.5">
+                {COLORS_LIST.map((color) => (
+                  <button key={color} type="button" onClick={() => toggleColor(color)}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${form.colors.includes(color) ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500"}`}>
+                    {color}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Weight / Qty / Material */}
           <div className="grid grid-cols-3 gap-2">
