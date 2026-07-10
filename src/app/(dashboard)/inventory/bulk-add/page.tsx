@@ -214,8 +214,8 @@ function ItemCard({ index, shopifyGroups, skuMeta, silver, settings, status, onR
 
   const baseNames = Array.from(shopifyGroups.keys()).sort();
   const currentGroup = selectedBaseName ? shopifyGroups.get(selectedBaseName) : null;
-  const allOpt1s = currentGroup ? [...new Set(currentGroup.options.map((o) => o.opt1).filter(Boolean))] : [];
-  const allOpt2s = currentGroup ? [...new Set(currentGroup.options.map((o) => o.opt2).filter(Boolean))] : [];
+  const allOpt1s = currentGroup ? Array.from(new Set(currentGroup.options.map((o) => o.opt1).filter(Boolean))) : [];
+  const allOpt2s = currentGroup ? Array.from(new Set(currentGroup.options.map((o) => o.opt2).filter(Boolean))) : [];
 
   const borderColor = status?.ok ? "border-emerald-300 bg-emerald-50/40"
     : status ? "border-red-300 bg-red-50/40"
