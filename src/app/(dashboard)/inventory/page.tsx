@@ -198,10 +198,11 @@ export default function InventoryPage() {
   const fetchSettings = useCallback(async () => {
     const res = await fetch("/api/inventory/settings");
     const raw = await res.json();
-    // Merge with defaults so new fields (e.g. usdEgpRate) are always present
-    const data: CostSettings = { ...DEFAULT_COST_SETTINGS, ...raw };
-    setCostSettings(data);
-    setDraftSettings(data);
+    // Merge with defaults so new fields are always present.
+    // Two separate spreads so costSettings and draftSettings never share a reference
+    // (shared reference prevents the auto-fill effect from re-running on settings save)
+    setCostSettings({ ...DEFAULT_COST_SETTINGS, ...raw });
+    setDraftSettings({ ...DEFAULT_COST_SETTINGS, ...raw });
   }, []);
 
   // Group Shopify products by cleaned base name for the "existing" picker
@@ -1033,7 +1034,9 @@ export default function InventoryPage() {
                     method: "POST", headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(draftSettings),
                   });
-                  setCostSettings(draftSettings);
+                  // Re-fetch from DB to get a fresh object reference so auto-fill
+                  // effect always re-runs with the confirmed saved values
+                  await fetchSettings();
                   setSettingsSaving(false);
                   setShowSettings(false);
                 }}
