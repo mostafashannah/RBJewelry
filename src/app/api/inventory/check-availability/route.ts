@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { releaseFromCancelledOrders } from "@/lib/inventory/release-cancelled";
 
 // Normalize a size value to a canonical numeric string so "8", "08", "8.0", "Size 8", "US 8", "EU 8" all equal "8"
 function canonicalSize(s: string): string {
@@ -28,8 +29,10 @@ export async function POST(req: NextRequest) {
   const { items } = await req.json() as { items: { title: string; quantity: number; variantTitle?: string; sku?: string }[] };
   if (!Array.isArray(items) || items.length === 0) return NextResponse.json({ results: [] });
 
+  await releaseFromCancelledOrders();
+
   const allInventory = await db.inventoryItem.findMany({
-    select: { name: true, status: true, quantity: true, sku: true, size: true },
+    select: { name: true, status: true, quantity: true, sku: true, size: true, orderNo: true },
   });
 
   const results = items.map(({ title, quantity, variantTitle, sku: itemSku }) => {
@@ -46,7 +49,7 @@ export async function POST(req: NextRequest) {
         (inv) => inv.sku != null && inv.sku.trim().toLowerCase() === orderSku
       );
       if (skuMatches.length > 0) {
-        const inStock = skuMatches.filter((m) => m.status === "IN_STOCK").reduce((s, m) => s + m.quantity, 0);
+        const inStock = skuMatches.filter((m) => m.status === "IN_STOCK" && m.orderNo == null).reduce((s, m) => s + m.quantity, 0);
         const reserved = skuMatches.filter((m) => m.status === "RESERVED").length;
         const sold = skuMatches.filter((m) => m.status === "SOLD").length;
         return { title, variantTitle: variantTitle ?? null, quantity, found: true, sizeMatched: true, inStock, reserved, sold, sku: itemSku };
@@ -102,7 +105,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const inStock = matches.filter((m) => m.status === "IN_STOCK").reduce((s, m) => s + m.quantity, 0);
+    const inStock = matches.filter((m) => m.status === "IN_STOCK" && m.orderNo == null).reduce((s, m) => s + m.quantity, 0);
     const reserved = matches.filter((m) => m.status === "RESERVED").length;
     const sold = matches.filter((m) => m.status === "SOLD").length;
 
