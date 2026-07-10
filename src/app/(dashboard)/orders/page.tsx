@@ -51,6 +51,11 @@ function isPaidStatus(status: string): boolean {
   return s.includes("PAID") && !s.includes("REFUNDED");
 }
 
+function isHoldableOrder(status: string): boolean {
+  const s = status.toUpperCase();
+  return !s.includes("PAID") && !s.includes("VOIDED") && !s.includes("CANCEL") && !s.includes("REFUNDED");
+}
+
 function matchesFilter(status: string, f: StatusFilter) {
   const s = status.toUpperCase();
   if (f === "all") return true;
@@ -64,7 +69,7 @@ function matchesFilter(status: string, f: StatusFilter) {
 }
 
 function AvailBadge({ r, held, onHold }: { r: AvailResult; held?: boolean; onHold?: () => void }) {
-  const canHold = r.found && r.inStock > 0 && onHold;
+  const canHold = r.found && r.sizeMatched && r.inStock > 0 && onHold;
   const holdBtn = canHold && !held ? (
     <button onClick={onHold}
       className="flex items-center gap-0.5 text-[9px] text-blue-500 hover:text-blue-700 border border-blue-200 rounded px-1 py-0.5 ml-1 transition-colors">
@@ -82,12 +87,12 @@ function AvailBadge({ r, held, onHold }: { r: AvailResult; held?: boolean; onHol
   if (!r.sizeMatched) {
     if (r.inStock >= r.quantity) return (
       <span className="flex items-center gap-1 text-[10px] text-amber-500">
-        <AlertCircle size={10} /> In stock ({r.inStock}), size?{holdBtn}
+        <AlertCircle size={10} /> In stock ({r.inStock}), size?
       </span>
     );
     if (r.inStock > 0) return (
       <span className="flex items-center gap-1 text-[10px] text-amber-600">
-        <AlertCircle size={10} /> Low stock ({r.inStock}), size?{holdBtn}
+        <AlertCircle size={10} /> Low stock ({r.inStock}), size?
       </span>
     );
     return (
@@ -638,7 +643,7 @@ export default function OrdersPage() {
               const items = meta?.items ?? [];
               const av = avail[o.id];
               const numericId = o.id.replace("gid://shopify/Order/", "");
-              const pending = !isPaidStatus(o.status);
+              const pending = isHoldableOrder(o.status);
               return (
                 <div
                   key={o.id}
@@ -742,7 +747,7 @@ export default function OrdersPage() {
                   const items = meta?.items ?? [];
                   const av = avail[o.id];
                   const numericId = o.id.replace("gid://shopify/Order/", "");
-                  const pending = !isPaidStatus(o.status);
+                  const pending = isHoldableOrder(o.status);
                   return (
                     <tr
                       key={o.id}
