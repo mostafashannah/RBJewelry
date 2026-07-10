@@ -212,17 +212,26 @@ function ItemCard({ index, shopifyGroups, skuMeta, silver, settings, status, ini
 
   // Auto-fill cost breakdown
   useEffect(() => {
+    const platingCost = settings.plating[form.category] ?? 0;
+    const packagingCost = settings.packaging.fixed;
+    const transportationCost = settings.transportation.fixed;
+
     const w = parseFloat(form.weightG);
-    if (!w || w <= 0 || !silver?.spot) return;
+    if (!w || w <= 0 || !silver?.spot) {
+      setForm((f) => ({
+        ...f,
+        platingCostEGP: String(platingCost),
+        packagingCostEGP: String(packagingCost),
+        transportationCostEGP: String(transportationCost),
+      }));
+      return;
+    }
     const egpRate = silver.usdEgpRate ?? settings.usdEgpRate;
     const silverPerGramEGP = silver.spot.pricePerGramUSD * egpRate;
     const metalCost = Math.round(w * 0.925 * silverPerGramEGP * (1 + settings.metal.markupPct / 100));
     const mfgCost = settings.manufacturing.mode === "percentage"
       ? Math.round(metalCost * settings.manufacturing.pct / 100)
       : Math.round(w * settings.manufacturing.perGram);
-    const platingCost = settings.plating[form.category] ?? 0;
-    const packagingCost = settings.packaging.fixed;
-    const transportationCost = settings.transportation.fixed;
     setForm((f) => ({
       ...f,
       metalCostEGP: String(metalCost),

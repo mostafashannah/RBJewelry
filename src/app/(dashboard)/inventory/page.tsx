@@ -165,6 +165,7 @@ export default function InventoryPage() {
   const [importing, setImporting] = useState(false);
   const [importDone, setImportDone] = useState<number | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
+  const [exportLoading, setExportLoading] = useState(false);
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -412,8 +413,21 @@ export default function InventoryPage() {
   // Auto-calculate cost fields from settings + live silver price when weight changes (add mode only)
   useEffect(() => {
     if (editItem) return;
+    const platingCost = costSettings.plating[form.category] ?? 0;
+    const packagingCost = costSettings.packaging.fixed;
+    const transportationCost = costSettings.transportation.fixed;
+
     const w = parseFloat(form.weightG);
-    if (!w || w <= 0 || !costSettings || !silver?.spot) return;
+    if (!w || w <= 0 || !silver?.spot) {
+      // Plating/packaging/transportation don't need silver — always apply from settings
+      setForm((f) => ({
+        ...f,
+        platingCostEGP: String(platingCost),
+        packagingCostEGP: String(packagingCost),
+        transportationCostEGP: String(transportationCost),
+      }));
+      return;
+    }
 
     const egpRate = silver.usdEgpRate ?? costSettings.usdEgpRate;
     const silverPerGramEGP = silver.spot.pricePerGramUSD * egpRate;
@@ -421,9 +435,6 @@ export default function InventoryPage() {
     const mfgCost = costSettings.manufacturing.mode === "percentage"
       ? Math.round(metalCost * costSettings.manufacturing.pct / 100)
       : Math.round(w * costSettings.manufacturing.perGram);
-    const platingCost = costSettings.plating[form.category] ?? 0;
-    const packagingCost = costSettings.packaging.fixed;
-    const transportationCost = costSettings.transportation.fixed;
 
     setForm((f) => ({
       ...f,
@@ -451,6 +462,23 @@ export default function InventoryPage() {
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.sku, editItem]);
+
+  async function handleExport() {
+    setExportLoading(true);
+    try {
+      const res = await fetch("/api/inventory/export");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `RBJewelry-Inventory-${new Date().toISOString().split("T")[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch { /* ignore */ }
+    finally { setExportLoading(false); }
+  }
 
   const save = async () => {
     if (!form.name || !form.weightG) return;
@@ -546,10 +574,10 @@ export default function InventoryPage() {
           >
             <RefreshCw size={14} className={syncing ? "animate-spin" : ""} /> Sync Prices
           </button>
-          <a href="/api/inventory/export" download
-            className="flex items-center gap-1.5 border border-zinc-200 text-zinc-600 text-sm px-3 py-2 rounded-xl hover:bg-zinc-50 transition-colors">
-            <Download size={14} /> Export
-          </a>
+          <button onClick={handleExport} disabled={exportLoading}
+            className="flex items-center gap-1.5 border border-zinc-200 text-zinc-600 text-sm px-3 py-2 rounded-xl hover:bg-zinc-50 transition-colors disabled:opacity-40">
+            {exportLoading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Export
+          </button>
           <button onClick={() => { setShowImport(true); setImportDone(null); setImportPreview(null); setImportFile(null); }}
             className="flex items-center gap-1.5 border border-zinc-200 text-zinc-600 text-sm px-3 py-2 rounded-xl hover:bg-zinc-50 transition-colors">
             <FileSpreadsheet size={14} /> Import
@@ -592,13 +620,13 @@ export default function InventoryPage() {
               <p className="text-[10px] text-zinc-400">{silver.pureSilverG.toLocaleString()}g pure (92.5%) · {silver.totalItems} items</p>
             </div>
             <div>
-              <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Silver Price (EGP/g)</p>
+              <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Metal Cost/g</p>
               {silver.spot ? (
                 <>
                   <p className="text-base font-semibold text-zinc-900">
-                    {Math.round(silver.spot.pricePerGramUSD * (silver.usdEgpRate ?? costSettings.usdEgpRate))} EGP
+                    {Math.round(silver.spot.pricePerGramUSD * 0.925 * (silver.usdEgpRate ?? costSettings.usdEgpRate) * (1 + costSettings.metal.markupPct / 100))} EGP
                   </p>
-                  <p className="text-[10px] text-zinc-400">per gram 925{!silver.usdEgpRate && " (est.)"}</p>
+                  <p className="text-[10px] text-zinc-400">per gram (925 + {costSettings.metal.markupPct}% markup){!silver.usdEgpRate && " (est.)"}</p>
                 </>
               ) : (
                 <p className="text-xs text-zinc-400 mt-1">Price unavailable</p>
@@ -609,11 +637,10 @@ export default function InventoryPage() {
               {silver.spot ? (
                 <>
                   <p className="text-base font-semibold text-zinc-900">
-                    {Math.round(silver.spot.silverValueUSD * (silver.usdEgpRate ?? costSettings.usdEgpRate)).toLocaleString()} EGP
+                    {Math.round(silver.spot.silverValueUSD * (silver.usdEgpRate ?? costSettings.usdEgpRate) * (1 + costSettings.metal.markupPct / 100)).toLocaleString()} EGP
                   </p>
                   <p className="text-[10px] text-zinc-400">
-                    {Math.round(silver.spot.pricePerGramUSD * (silver.usdEgpRate ?? costSettings.usdEgpRate))} EGP/g
-                    {!silver.usdEgpRate && " (est.)"}
+                    total stock at current prices + markup{!silver.usdEgpRate && " (est.)"}
                   </p>
                 </>
               ) : (

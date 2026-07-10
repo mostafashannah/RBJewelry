@@ -12,6 +12,7 @@ interface Item {
   costEGP: number | null;
   metalCostEGP: number | null; platingCostEGP: number | null; stoneCostEGP: number | null;
   manufacturingCostEGP: number | null; transportationCostEGP: number | null;
+  packagingCostEGP: number | null;
   priceEGP: number | null; photoUrl: string | null; status: string;
   orderNo: string | null; notes: string | null; createdAt: string; updatedAt: string;
 }
@@ -230,7 +231,7 @@ export default function ItemDetailPage() {
         </div>
         {/* Cost breakdown */}
         {(item.metalCostEGP || item.platingCostEGP || item.stoneCostEGP ||
-          item.manufacturingCostEGP || item.transportationCostEGP) && (
+          item.manufacturingCostEGP || item.transportationCostEGP || item.packagingCostEGP) && (
           <div className="border-t border-zinc-100 pt-4 space-y-2">
             <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Cost breakdown</p>
             {[
@@ -239,6 +240,7 @@ export default function ItemDetailPage() {
               ["Stone", item.stoneCostEGP],
               ["Manufacturing", item.manufacturingCostEGP],
               ["Transportation", item.transportationCostEGP],
+              ["Packaging", item.packagingCostEGP],
             ].filter(([, v]) => v).map(([label, val]) => (
               <div key={label as string} className="flex justify-between text-sm">
                 <span className="text-zinc-500">{label as string}</span>
