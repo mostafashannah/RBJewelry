@@ -588,12 +588,20 @@ export default function InventoryPage() {
             <div>
               <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Total Weight</p>
               <p className="text-base font-semibold text-zinc-900">{silver.totalWeightG.toLocaleString()}g</p>
-              <p className="text-[10px] text-zinc-400">{silver.totalItems} items in stock</p>
+              <p className="text-[10px] text-zinc-400">{silver.pureSilverG.toLocaleString()}g pure (92.5%) · {silver.totalItems} items</p>
             </div>
             <div>
-              <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Pure Silver (92.5%)</p>
-              <p className="text-base font-semibold text-zinc-900">{silver.pureSilverG.toLocaleString()}g</p>
-              <p className="text-[10px] text-zinc-400">{(silver.pureSilverG / 31.1035).toFixed(2)} troy oz</p>
+              <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Silver Price (EGP/g)</p>
+              {silver.spot ? (
+                <>
+                  <p className="text-base font-semibold text-zinc-900">
+                    {Math.round(silver.spot.pricePerGramUSD * (silver.usdEgpRate ?? costSettings.usdEgpRate))} EGP
+                  </p>
+                  <p className="text-[10px] text-zinc-400">per gram 925{!silver.usdEgpRate && " (est.)"}</p>
+                </>
+              ) : (
+                <p className="text-xs text-zinc-400 mt-1">Price unavailable</p>
+              )}
             </div>
             <div>
               <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Metal Value (EGP)</p>
