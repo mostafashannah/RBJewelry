@@ -195,7 +195,9 @@ export default function InventoryPage() {
 
   const fetchSettings = useCallback(async () => {
     const res = await fetch("/api/inventory/settings");
-    const data: CostSettings = await res.json();
+    const raw = await res.json();
+    // Merge with defaults so new fields (e.g. usdEgpRate) are always present
+    const data: CostSettings = { ...DEFAULT_COST_SETTINGS, ...raw };
     setCostSettings(data);
     setDraftSettings(data);
   }, []);
