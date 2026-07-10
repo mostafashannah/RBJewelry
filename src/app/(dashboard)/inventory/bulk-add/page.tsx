@@ -32,6 +32,18 @@ function initRows(n = 10): Row[] {
 
 type RowStatus = { ok: boolean; message: string } | null;
 
+type ColDef = { key: keyof Row; label: string; width: string; placeholder?: string; type?: string };
+
+const COLS: ColDef[] = [
+  { key: "name", label: "Name *", width: "w-48", placeholder: "Item name" },
+  { key: "sku", label: "SKU", width: "w-28", placeholder: "Auto" },
+  { key: "category", label: "Category", width: "w-28", type: "select" },
+  { key: "size", label: "Size", width: "w-16", placeholder: "e.g. 7" },
+  { key: "weightG", label: "Weight (g) *", width: "w-24", placeholder: "e.g. 4.5", type: "number" },
+  { key: "colors", label: "Colors", width: "w-32", placeholder: "Gold, Silver…" },
+  { key: "quantity", label: "Qty", width: "w-16", placeholder: "1", type: "number" },
+];
+
 export default function BulkAddPage() {
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>(initRows);
@@ -161,16 +173,6 @@ export default function BulkAddPage() {
   const activeCount = rows.filter((r) => !isRowEmpty(r)).length;
   const successCount = Object.values(statuses).filter((s) => s?.ok).length;
   const errorCount = Object.values(statuses).filter((s) => s && !s.ok).length;
-
-  const COLS = [
-    { key: "name", label: "Name *", width: "w-48", placeholder: "Item name" },
-    { key: "sku", label: "SKU", width: "w-28", placeholder: "Auto" },
-    { key: "category", label: "Category", width: "w-28", type: "select" },
-    { key: "size", label: "Size", width: "w-16", placeholder: "e.g. 7" },
-    { key: "weightG", label: "Weight (g) *", width: "w-24", placeholder: "e.g. 4.5", type: "number" },
-    { key: "colors", label: "Colors", width: "w-32", placeholder: "Gold, Silver…" },
-    { key: "quantity", label: "Qty", width: "w-16", placeholder: "1", type: "number" },
-  ] as const;
 
   return (
     <div className="min-h-screen bg-zinc-50">
