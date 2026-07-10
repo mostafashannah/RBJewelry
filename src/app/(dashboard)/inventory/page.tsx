@@ -386,6 +386,7 @@ export default function InventoryPage() {
         name: selectedProduct.name + (colorLabel ? ` (${colorLabel})` : ""),
         sku,
         size: selectedSize,
+        colors: colorLabel ? [colorLabel] : [],
       }));
       return;
     }
@@ -395,7 +396,8 @@ export default function InventoryPage() {
       let sku = `${prefix}${String(num).padStart(5, "0")}`;
       if (selectedColorCode) sku += `-${selectedColorCode}`;
       if (selectedSize) sku += `-${selectedSize}`;
-      setForm((f) => ({ ...f, sku, size: selectedSize }));
+      const colorLabel = COLOR_CODES.find((c) => c.code === selectedColorCode)?.display ?? "";
+      setForm((f) => ({ ...f, sku, size: selectedSize, colors: colorLabel ? [colorLabel] : [] }));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addMode, selectedProduct, selectedColorCode, selectedSize, form.category, skuMeta, editItem, selectedBaseName, selectedOpt1, selectedOpt2]);
@@ -546,6 +548,10 @@ export default function InventoryPage() {
             title="Cost calculation settings"
             className="flex items-center gap-1.5 border border-zinc-200 text-zinc-600 text-sm px-3 py-2 rounded-xl hover:bg-zinc-50 transition-colors">
             <Settings size={14} />
+          </button>
+          <button onClick={() => router.push("/inventory/bulk-add")}
+            className="flex items-center gap-1.5 border border-zinc-200 text-zinc-600 text-sm px-3 py-2 rounded-xl hover:bg-zinc-50 transition-colors">
+            <Plus size={14} /> Bulk Add
           </button>
           <button onClick={openAdd}
             className="flex items-center gap-1.5 bg-zinc-900 text-white text-sm px-4 py-2 rounded-xl hover:bg-zinc-700 transition-colors">
