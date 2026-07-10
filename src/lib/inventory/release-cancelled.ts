@@ -8,7 +8,7 @@ export async function releaseFromCancelledOrders(): Promise<number> {
 
   if (reserved.length === 0) return 0;
 
-  const orderNos = [...new Set(reserved.map((r) => r.orderNo!))];
+  const orderNos = Array.from(new Set(reserved.map((r) => r.orderNo!)));
 
   const orders = await db.shopifyOrderCache.findMany({
     where: { orderNumber: { in: orderNos } },
