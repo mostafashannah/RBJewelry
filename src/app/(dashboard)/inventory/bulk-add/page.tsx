@@ -533,7 +533,7 @@ export default function BulkAddPage() {
   // Reverse map: SKU → { baseName, opt1, opt2, imageUrl, price }
   const skuToProduct = useMemo(() => {
     const map = new Map<string, { baseName: string; opt1: string; opt2: string; imageUrl: string | null; price: number }>();
-    for (const [baseName, group] of shopifyGroups) {
+    for (const [baseName, group] of Array.from(shopifyGroups)) {
       for (const opt of group.options) {
         if (opt.sku) map.set(opt.sku, { baseName, opt1: opt.opt1, opt2: opt.opt2, imageUrl: group.imageUrl, price: opt.price });
       }
@@ -563,7 +563,7 @@ export default function BulkAddPage() {
         const bysku = item.sku ? skuToProduct.get(item.sku) : null;
         const byTitle = bysku ? null : (() => {
           const tl = item.title.toLowerCase();
-          for (const [baseName, group] of shopifyGroups) {
+          for (const [baseName, group] of Array.from(shopifyGroups)) {
             if (baseName.toLowerCase().includes(tl) || tl.includes(baseName.toLowerCase())) {
               const opt = group.options[0];
               return { baseName, opt1: opt?.opt1 ?? "", opt2: opt?.opt2 ?? "", imageUrl: group.imageUrl, price: opt?.price ?? 0 };
