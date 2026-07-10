@@ -77,6 +77,7 @@ interface CostSettings {
   manufacturing: { mode: "percentage" | "per_gram"; pct: number; perGram: number };
   plating: Record<string, number>;
   packaging: { fixed: number };
+  transportation: { fixed: number };
   usdEgpRate: number;
 }
 
@@ -85,6 +86,7 @@ const DEFAULT_COST_SETTINGS: CostSettings = {
   manufacturing: { mode: "percentage", pct: 10, perGram: 5 },
   plating: { Ring: 15, Earrings: 20, Necklace: 25, Bracelet: 20, Anklet: 15, Set: 30, Other: 10 },
   packaging: { fixed: 75 },
+  transportation: { fixed: 0 },
   usdEgpRate: 50,
 };
 
@@ -420,6 +422,7 @@ export default function InventoryPage() {
       : Math.round(w * costSettings.manufacturing.perGram);
     const platingCost = costSettings.plating[form.category] ?? 0;
     const packagingCost = costSettings.packaging.fixed;
+    const transportationCost = costSettings.transportation.fixed;
 
     setForm((f) => ({
       ...f,
@@ -427,6 +430,7 @@ export default function InventoryPage() {
       manufacturingCostEGP: String(mfgCost),
       platingCostEGP: String(platingCost),
       packagingCostEGP: String(packagingCost),
+      transportationCostEGP: String(transportationCost),
     }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.weightG, form.category, costSettings, silver, editItem]);
@@ -986,6 +990,19 @@ export default function InventoryPage() {
                   <input type="number" min="0" step="1"
                     value={draftSettings.packaging.fixed}
                     onChange={(e) => setDraftSettings((s) => ({ ...s, packaging: { fixed: parseFloat(e.target.value) || 0 } }))}
+                    className="flex-1 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zinc-400" />
+                  <span className="text-xs text-zinc-400">EGP</span>
+                </div>
+              </div>
+
+              {/* Transportation */}
+              <div>
+                <p className="text-xs font-semibold text-zinc-700 mb-2">Transportation</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-500 w-28 shrink-0">Fixed per item</span>
+                  <input type="number" min="0" step="1"
+                    value={draftSettings.transportation.fixed}
+                    onChange={(e) => setDraftSettings((s) => ({ ...s, transportation: { fixed: parseFloat(e.target.value) || 0 } }))}
                     className="flex-1 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zinc-400" />
                   <span className="text-xs text-zinc-400">EGP</span>
                 </div>

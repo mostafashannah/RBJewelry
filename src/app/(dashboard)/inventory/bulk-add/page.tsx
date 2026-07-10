@@ -72,6 +72,7 @@ type CostSettings = {
   manufacturing: { mode: "percentage" | "per_gram"; pct: number; perGram: number };
   plating: Record<string, number>;
   packaging: { fixed: number };
+  transportation: { fixed: number };
   usdEgpRate: number;
 };
 type SilverData = {
@@ -84,6 +85,7 @@ const DEFAULT_SETTINGS: CostSettings = {
   manufacturing: { mode: "percentage", pct: 10, perGram: 5 },
   plating: { Ring: 15, Earrings: 20, Necklace: 25, Bracelet: 20, Anklet: 15, Set: 30, Other: 10 },
   packaging: { fixed: 75 },
+  transportation: { fixed: 0 },
   usdEgpRate: 50,
 };
 
@@ -202,12 +204,14 @@ function ItemCard({ index, shopifyGroups, skuMeta, silver, settings, status, onR
       : Math.round(w * settings.manufacturing.perGram);
     const platingCost = settings.plating[form.category] ?? 0;
     const packagingCost = settings.packaging.fixed;
+    const transportationCost = settings.transportation.fixed;
     setForm((f) => ({
       ...f,
       metalCostEGP: String(metalCost),
       manufacturingCostEGP: String(mfgCost),
       platingCostEGP: String(platingCost),
       packagingCostEGP: String(packagingCost),
+      transportationCostEGP: String(transportationCost),
     }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.weightG, form.category, settings, silver]);
