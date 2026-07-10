@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, ChevronLeft, Loader2, CheckCircle, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash2, ChevronLeft, Loader2, CheckCircle, AlertCircle, ChevronDown, ChevronUp, Search } from "lucide-react";
 
 // ─── Shared types & helpers ─────────────────────────────────────────────────
 
@@ -109,6 +109,19 @@ type RowStatus = { ok: boolean; message: string } | null;
 
 function newId() { return Math.random().toString(36).slice(2, 9); }
 
+// Initial values injected when a card is created from an order import
+interface CardInitial {
+  orderNo: string;
+  name: string;
+  sku: string | null;
+  quantity: number;
+  priceEGP: string;
+  baseName: string;   // matched shopifyGroups key
+  opt1: string;
+  opt2: string;
+  imageUrl: string | null;
+}
+
 // ─── Item Card ───────────────────────────────────────────────────────────────
 
 interface CardProps {
@@ -118,17 +131,20 @@ interface CardProps {
   silver: SilverData | null;
   settings: CostSettings;
   status: RowStatus;
+  initial?: CardInitial;
   onRemove: () => void;
   onFormChange: (f: ItemForm, photoUrl: string | null) => void;
 }
 
-function ItemCard({ index, shopifyGroups, skuMeta, silver, settings, status, onRemove, onFormChange }: CardProps) {
-  const [addMode, setAddMode] = useState<AddMode>("existing");
-  const [form, setForm] = useState<ItemForm>(emptyForm());
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [selectedBaseName, setSelectedBaseName] = useState("");
-  const [selectedOpt1, setSelectedOpt1] = useState("");
-  const [selectedOpt2, setSelectedOpt2] = useState("");
+function ItemCard({ index, shopifyGroups, skuMeta, silver, settings, status, initial, onRemove, onFormChange }: CardProps) {
+  const [addMode, setAddMode] = useState<AddMode>(initial ? "existing" : "existing");
+  const [form, setForm] = useState<ItemForm>(() => initial
+    ? { ...emptyForm(), name: initial.name, sku: initial.sku ?? "", quantity: String(initial.quantity), priceEGP: initial.priceEGP, orderNo: initial.orderNo }
+    : emptyForm());
+  const [photoUrl, setPhotoUrl] = useState<string | null>(initial?.imageUrl ?? null);
+  const [selectedBaseName, setSelectedBaseName] = useState(initial?.baseName ?? "");
+  const [selectedOpt1, setSelectedOpt1] = useState(initial?.opt1 ?? "");
+  const [selectedOpt2, setSelectedOpt2] = useState(initial?.opt2 ?? "");
   const [selectedColorCode, setSelectedColorCode] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string; sku: string | null } | null>(null);
@@ -477,7 +493,7 @@ type RowStatus2 = { ok: boolean; message: string } | null;
 
 export default function BulkAddPage() {
   const router = useRouter();
-  const [cards, setCards] = useState<{ id: string }[]>([{ id: newId() }, { id: newId() }, { id: newId() }]);
+  const [cards, setCards] = useState<{ id: string; initial?: CardInitial }[]>([{ id: newId() }, { id: newId() }, { id: newId() }]);
   const [cardData, setCardData] = useState<Record<string, CardData>>({});
   const [statuses, setStatuses] = useState<Record<string, RowStatus2>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -486,6 +502,11 @@ export default function BulkAddPage() {
   const [skuMeta, setSkuMeta] = useState<SkuMeta | null>(null);
   const [silver, setSilver] = useState<SilverData | null>(null);
   const [settings, setSettings] = useState<CostSettings>(DEFAULT_SETTINGS);
+
+  // Order import
+  const [orderInput, setOrderInput] = useState("");
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [orderError, setOrderError] = useState("");
 
   const shopifyGroups = useMemo<Map<string, ShopifyGroup>>(() => {
     const map = new Map<string, ShopifyGroup>();
@@ -509,11 +530,73 @@ export default function BulkAddPage() {
     return map;
   }, [skuMeta]);
 
+  // Reverse map: SKU → { baseName, opt1, opt2, imageUrl, price }
+  const skuToProduct = useMemo(() => {
+    const map = new Map<string, { baseName: string; opt1: string; opt2: string; imageUrl: string | null; price: number }>();
+    for (const [baseName, group] of shopifyGroups) {
+      for (const opt of group.options) {
+        if (opt.sku) map.set(opt.sku, { baseName, opt1: opt.opt1, opt2: opt.opt2, imageUrl: group.imageUrl, price: opt.price });
+      }
+    }
+    return map;
+  }, [shopifyGroups]);
+
   useEffect(() => {
     fetch("/api/inventory/sku-meta").then((r) => r.json()).then(setSkuMeta).catch(() => null);
     fetch("/api/inventory/silver-value").then((r) => r.json()).then(setSilver).catch(() => null);
     fetch("/api/inventory/settings").then((r) => r.json()).then(setSettings).catch(() => null);
   }, []);
+
+  async function importFromOrder() {
+    const q = orderInput.replace(/^#/, "").trim();
+    if (!q) return;
+    setOrderLoading(true);
+    setOrderError("");
+    try {
+      const res = await fetch(`/api/inventory/order-items?orderNo=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (!res.ok) { setOrderError(data.error ?? "Order not found"); return; }
+
+      type OItem = { title: string; sku: string | null; quantity: number; variantTitle: string | null };
+      const newCards = (data.items as OItem[]).map((item) => {
+        // Match by SKU first, then by title
+        const bysku = item.sku ? skuToProduct.get(item.sku) : null;
+        const byTitle = bysku ? null : (() => {
+          const tl = item.title.toLowerCase();
+          for (const [baseName, group] of shopifyGroups) {
+            if (baseName.toLowerCase().includes(tl) || tl.includes(baseName.toLowerCase())) {
+              const opt = group.options[0];
+              return { baseName, opt1: opt?.opt1 ?? "", opt2: opt?.opt2 ?? "", imageUrl: group.imageUrl, price: opt?.price ?? 0 };
+            }
+          }
+          return null;
+        })();
+        const match = bysku ?? byTitle;
+        return {
+          id: newId(),
+          initial: {
+            orderNo: data.orderNo,
+            name: match?.baseName ?? item.title,
+            sku: item.sku,
+            quantity: item.quantity,
+            priceEGP: match ? String(match.price) : "",
+            baseName: match?.baseName ?? "",
+            opt1: match?.opt1 ?? "",
+            opt2: match?.opt2 ?? "",
+            imageUrl: match?.imageUrl ?? null,
+          } as CardInitial,
+        };
+      });
+
+      // Replace empty cards + append new ones
+      setCards((cs) => [...cs.filter((c) => !isEmptyCard(c.id)), ...newCards]);
+      setOrderInput("");
+    } catch {
+      setOrderError("Failed to fetch order");
+    } finally {
+      setOrderLoading(false);
+    }
+  }
 
   const handleFormChange = useCallback((id: string, form: ItemForm, photoUrl: string | null) => {
     setCardData((prev) => ({ ...prev, [id]: { id, form, photoUrl } }));
@@ -637,6 +720,30 @@ export default function BulkAddPage() {
           </div>
         </div>
 
+        {/* Import from Order */}
+        <div className="mb-4 bg-white border border-zinc-200 rounded-2xl p-4">
+          <p className="text-xs font-semibold text-zinc-700 mb-2">Import from Order</p>
+          <div className="flex gap-2">
+            <input
+              value={orderInput}
+              onChange={(e) => setOrderInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && importFromOrder()}
+              placeholder="Order # e.g. 1234"
+              className="flex-1 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zinc-400"
+            />
+            <button
+              onClick={importFromOrder}
+              disabled={orderLoading || !orderInput.trim()}
+              className="flex items-center gap-1.5 bg-zinc-900 text-white text-sm px-4 py-2 rounded-xl hover:bg-zinc-700 disabled:opacity-40 transition-colors whitespace-nowrap"
+            >
+              {orderLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+              Load Order
+            </button>
+          </div>
+          {orderError && <p className="text-xs text-red-500 mt-1.5">{orderError}</p>}
+          <p className="text-[10px] text-zinc-400 mt-1.5">Enter an order number to pre-fill cards with its items — then complete the missing fields.</p>
+        </div>
+
         {/* Result banner */}
         {done && (
           <div className={`mb-4 flex items-center gap-2 px-4 py-3 rounded-xl text-sm ${errorCount === 0 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
@@ -657,6 +764,7 @@ export default function BulkAddPage() {
               silver={silver}
               settings={settings}
               status={statuses[c.id] ?? null}
+              initial={c.initial}
               onRemove={() => removeCard(c.id)}
               onFormChange={(form, photoUrl) => handleFormChange(c.id, form, photoUrl)}
             />
