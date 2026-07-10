@@ -15,8 +15,10 @@ if (existsSync(".env.local")) {
 const db = new PrismaClient();
 
 async function main() {
-  const { count } = await db.inventoryItem.deleteMany({});
-  console.log(`Deleted ${count} inventory item(s).`);
+  // Only wipe SOLD items — the rebuild script recreates those from static order data.
+  // IN_STOCK / RESERVED / DAMAGED items are preserved so manual additions survive deploys.
+  const { count } = await db.inventoryItem.deleteMany({ where: { status: "SOLD" } });
+  console.log(`Deleted ${count} SOLD inventory item(s). IN_STOCK items preserved.`);
 }
 
 main()
