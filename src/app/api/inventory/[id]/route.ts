@@ -13,10 +13,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const body = await req.json();
   const { name, sku, category, material, weightG, colors, size, quantity,
     metalCostEGP, platingCostEGP, stoneCostEGP, manufacturingCostEGP, transportationCostEGP,
+    packagingCostEGP,
     costEGP, priceEGP, photoUrl, status, orderNo, notes } = body;
 
   const pf = (v: unknown) => (v ? parseFloat(String(v)) : null);
-  const subCosts = [metalCostEGP, platingCostEGP, stoneCostEGP, manufacturingCostEGP, transportationCostEGP];
+  const subCosts = [metalCostEGP, platingCostEGP, stoneCostEGP, manufacturingCostEGP, transportationCostEGP, packagingCostEGP];
   const subTotal = subCosts.some(v => v !== undefined)
     ? subCosts.reduce((s, v) => s + (v ? parseFloat(String(v)) : 0), 0)
     : null;
@@ -40,6 +41,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       ...(stoneCostEGP !== undefined && { stoneCostEGP: pf(stoneCostEGP) }),
       ...(manufacturingCostEGP !== undefined && { manufacturingCostEGP: pf(manufacturingCostEGP) }),
       ...(transportationCostEGP !== undefined && { transportationCostEGP: pf(transportationCostEGP) }),
+      ...(packagingCostEGP !== undefined && { packagingCostEGP: pf(packagingCostEGP) }),
       ...(priceEGP !== undefined && { priceEGP: priceEGP ? parseFloat(priceEGP) : null }),
       ...(photoUrl !== undefined && { photoUrl }),
       ...(status !== undefined && { status: status as InventoryStatus }),

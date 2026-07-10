@@ -263,6 +263,7 @@ async function main() {
         size: size ?? undefined,
         quantity: item.quantity,
         costEGP,
+        packagingCostEGP: 75,
         priceEGP: item.priceEGP,
         status: "SOLD",
         orderNo: item.orderNo,

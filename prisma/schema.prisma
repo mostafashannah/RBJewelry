@@ -213,6 +213,7 @@ model InventoryItem {
   stoneCostEGP         Float?
   manufacturingCostEGP Float?
   transportationCostEGP Float?
+  packagingCostEGP     Float?
   priceEGP  Float?
   photoUrl  String?
   status    InventoryStatus @default(IN_STOCK)
@@ -224,6 +225,12 @@ model InventoryItem {
   @@index([status])
   @@index([category])
   @@index([orderNo])
+}
+
+model AppSettings {
+  id        String   @id @default("singleton")
+  costRules Json     @default("{}")
+  updatedAt DateTime @updatedAt
 }
 
 model Expense {

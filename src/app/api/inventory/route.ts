@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { name, sku, category, material, weightG, colors, size, quantity,
     metalCostEGP, platingCostEGP, stoneCostEGP, manufacturingCostEGP, transportationCostEGP,
+    packagingCostEGP,
     costEGP, priceEGP, photoUrl, orderNo, notes } = body;
 
   if (!name || !category || weightG == null) {
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
   }
 
   const pf = (v: unknown) => (v ? parseFloat(String(v)) : null);
-  const subCosts = [metalCostEGP, platingCostEGP, stoneCostEGP, manufacturingCostEGP, transportationCostEGP];
+  const subCosts = [metalCostEGP, platingCostEGP, stoneCostEGP, manufacturingCostEGP, transportationCostEGP, packagingCostEGP];
   const subTotal = subCosts.reduce((s, v) => s + (v ? parseFloat(String(v)) : 0), 0);
   const finalCost = subTotal > 0 ? subTotal : (costEGP ? parseFloat(costEGP) : null);
 
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
       stoneCostEGP: pf(stoneCostEGP),
       manufacturingCostEGP: pf(manufacturingCostEGP),
       transportationCostEGP: pf(transportationCostEGP),
+      packagingCostEGP: pf(packagingCostEGP),
       priceEGP: priceEGP ? parseFloat(priceEGP) : null,
       photoUrl: photoUrl ?? null,
       orderNo: orderNo || null,

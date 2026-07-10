@@ -5,6 +5,7 @@ import {
   Plus, Camera, X, Scale, Tag, Package, Loader2, CheckCircle,
   Trash2, Edit2, Upload, FileSpreadsheet, Sparkles, AlertCircle,
   TrendingUp, RefreshCw, Hash, ShoppingBag, LayoutGrid, List, Download, Search,
+  Settings, Zap,
 } from "lucide-react";
 
 const CATEGORIES = ["Ring", "Necklace", "Bracelet", "Earrings", "Anklet", "Set", "Other"];
@@ -71,6 +72,20 @@ function parseVariantTitle(vt: string, fo1: string, fo2: string): { opt1: string
   return { opt1: fo1, opt2: parts[0].trim() };
 }
 
+interface CostSettings {
+  metal: { markupPct: number };
+  manufacturing: { mode: "percentage" | "per_gram"; pct: number; perGram: number };
+  plating: Record<string, number>;
+  packaging: { fixed: number };
+}
+
+const DEFAULT_COST_SETTINGS: CostSettings = {
+  metal: { markupPct: 10 },
+  manufacturing: { mode: "percentage", pct: 10, perGram: 5 },
+  plating: { Ring: 15, Earrings: 20, Necklace: 25, Bracelet: 20, Anklet: 15, Set: 30, Other: 10 },
+  packaging: { fixed: 75 },
+};
+
 type AddMode = "existing" | "new-color" | "new";
 type ShopifyVariantEntry = { title: string; sku: string; price: number; qty: number; weightG: number };
 type ShopifyProductEntry = { id: string; title: string; imageUrl: string | null; variants: ShopifyVariantEntry[]; defaultSku: string; defaultPrice: number; defaultWeightG: number };
@@ -96,6 +111,7 @@ interface Item {
   costEGP: number | null;
   metalCostEGP: number | null; platingCostEGP: number | null; stoneCostEGP: number | null;
   manufacturingCostEGP: number | null; transportationCostEGP: number | null;
+  packagingCostEGP: number | null;
   priceEGP: number | null; photoUrl: string | null; status: string;
   orderNo: string | null; notes: string | null; createdAt: string;
 }
@@ -114,7 +130,7 @@ const emptyForm = {
   name: "", sku: "", category: CATEGORIES[0], material: MATERIALS[0],
   weightG: "", colors: [] as string[], size: "", quantity: "1",
   metalCostEGP: "", platingCostEGP: "", stoneCostEGP: "",
-  manufacturingCostEGP: "", transportationCostEGP: "",
+  manufacturingCostEGP: "", transportationCostEGP: "", packagingCostEGP: "",
   priceEGP: "", orderNo: "", notes: "",
 };
 
@@ -153,6 +169,11 @@ export default function InventoryPage() {
   const suggTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  // Settings
+  const [showSettings, setShowSettings] = useState(false);
+  const [costSettings, setCostSettings] = useState<CostSettings>(DEFAULT_COST_SETTINGS);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [draftSettings, setDraftSettings] = useState<CostSettings>(DEFAULT_COST_SETTINGS);
   // Smart add mode
   const [addMode, setAddMode] = useState<AddMode>("existing");
   const [skuMeta, setSkuMeta] = useState<SkuMeta | null>(null);
@@ -168,6 +189,13 @@ export default function InventoryPage() {
     const res = await fetch("/api/inventory/sku-meta");
     const data = await res.json();
     setSkuMeta(data);
+  }, []);
+
+  const fetchSettings = useCallback(async () => {
+    const res = await fetch("/api/inventory/settings");
+    const data: CostSettings = await res.json();
+    setCostSettings(data);
+    setDraftSettings(data);
   }, []);
 
   // Group Shopify products by cleaned base name for the "existing" picker
@@ -216,7 +244,7 @@ export default function InventoryPage() {
     setSilverLoading(false);
   };
 
-  useEffect(() => { load(); loadSilver(); }, [load]);
+  useEffect(() => { load(); loadSilver(); fetchSettings(); }, [load, fetchSettings]);
   // Re-fetch when search changes (debounced)
   useEffect(() => {
     const t = setTimeout(() => load(search), 350);
@@ -318,6 +346,7 @@ export default function InventoryPage() {
       stoneCostEGP: item.stoneCostEGP != null ? String(item.stoneCostEGP) : "",
       manufacturingCostEGP: item.manufacturingCostEGP != null ? String(item.manufacturingCostEGP) : "",
       transportationCostEGP: item.transportationCostEGP != null ? String(item.transportationCostEGP) : "",
+      packagingCostEGP: item.packagingCostEGP != null ? String(item.packagingCostEGP) : "",
       priceEGP: item.priceEGP != null ? String(item.priceEGP) : "",
       orderNo: item.orderNo ?? "", notes: item.notes ?? "",
     });
@@ -371,10 +400,50 @@ export default function InventoryPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addMode, selectedProduct, selectedColorCode, selectedSize, form.category, skuMeta, editItem, selectedBaseName, selectedOpt1, selectedOpt2]);
 
+  // Auto-calculate cost fields from settings + live silver price when weight changes (add mode only)
+  useEffect(() => {
+    if (editItem) return;
+    const w = parseFloat(form.weightG);
+    if (!w || w <= 0 || !costSettings || !silver?.spot || !silver?.usdEgpRate) return;
+
+    const silverPerGramEGP = silver.spot.pricePerGramUSD * silver.usdEgpRate;
+    const metalCost = Math.round(w * 0.925 * silverPerGramEGP * (1 + costSettings.metal.markupPct / 100));
+    const mfgCost = costSettings.manufacturing.mode === "percentage"
+      ? Math.round(metalCost * costSettings.manufacturing.pct / 100)
+      : Math.round(w * costSettings.manufacturing.perGram);
+    const platingCost = costSettings.plating[form.category] ?? 0;
+    const packagingCost = costSettings.packaging.fixed;
+
+    setForm((f) => ({
+      ...f,
+      metalCostEGP: String(metalCost),
+      manufacturingCostEGP: String(mfgCost),
+      platingCostEGP: String(platingCost),
+      packagingCostEGP: String(packagingCost),
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.weightG, form.category, costSettings, silver, editItem]);
+
+  // Auto-fill stone cost from avg of existing items with same base SKU
+  useEffect(() => {
+    if (editItem || !form.sku) return;
+    const baseSku = form.sku.match(/^([A-Z]\d{5})/)?.[1];
+    if (!baseSku) return;
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/inventory/avg-stone-cost?sku=${baseSku}`);
+        const data = await res.json();
+        if (data.avg > 0) setForm((f) => ({ ...f, stoneCostEGP: String(data.avg) }));
+      } catch { /* ignore */ }
+    }, 600);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.sku, editItem]);
+
   const save = async () => {
     if (!form.name || !form.weightG) return;
     setSaving(true);
-    const totalCost = [form.metalCostEGP, form.platingCostEGP, form.stoneCostEGP, form.manufacturingCostEGP, form.transportationCostEGP]
+    const totalCost = [form.metalCostEGP, form.platingCostEGP, form.stoneCostEGP, form.manufacturingCostEGP, form.transportationCostEGP, form.packagingCostEGP]
       .reduce((s, v) => s + (parseFloat(v) || 0), 0);
 
     // Auto-fetch photo from Shopify product cache by SKU if none provided
@@ -472,6 +541,11 @@ export default function InventoryPage() {
           <button onClick={() => { setShowImport(true); setImportDone(null); setImportPreview(null); setImportFile(null); }}
             className="flex items-center gap-1.5 border border-zinc-200 text-zinc-600 text-sm px-3 py-2 rounded-xl hover:bg-zinc-50 transition-colors">
             <FileSpreadsheet size={14} /> Import
+          </button>
+          <button onClick={() => { setDraftSettings(costSettings); setShowSettings(true); }}
+            title="Cost calculation settings"
+            className="flex items-center gap-1.5 border border-zinc-200 text-zinc-600 text-sm px-3 py-2 rounded-xl hover:bg-zinc-50 transition-colors">
+            <Settings size={14} />
           </button>
           <button onClick={openAdd}
             className="flex items-center gap-1.5 bg-zinc-900 text-white text-sm px-4 py-2 rounded-xl hover:bg-zinc-700 transition-colors">
@@ -777,6 +851,137 @@ export default function InventoryPage() {
                   )}
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-5 border-b border-zinc-100">
+              <div className="flex items-center gap-2">
+                <Settings size={14} className="text-zinc-400" />
+                <h2 className="text-sm font-semibold">Cost Calculation Settings</h2>
+              </div>
+              <button onClick={() => setShowSettings(false)}><X size={16} className="text-zinc-400" /></button>
+            </div>
+            <div className="p-5 space-y-5">
+
+              {/* Metal */}
+              <div>
+                <p className="text-xs font-semibold text-zinc-700 mb-1">Metal (925 Silver)</p>
+                <p className="text-[10px] text-zinc-400 mb-2">
+                  cost = weight × 92.5% × spot price/g × USD/EGP rate × (1 + markup%)
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-500 w-28 shrink-0">Markup %</span>
+                  <input type="number" min="0" step="1"
+                    value={draftSettings.metal.markupPct}
+                    onChange={(e) => setDraftSettings((s) => ({ ...s, metal: { markupPct: parseFloat(e.target.value) || 0 } }))}
+                    className="flex-1 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zinc-400" />
+                  <span className="text-xs text-zinc-400">%</span>
+                </div>
+                {silver?.spot && silver?.usdEgpRate && (
+                  <p className="text-[10px] text-zinc-400 mt-1">
+                    Live: ${silver.spot.pricePerGramUSD}/g × {silver.usdEgpRate.toFixed(0)} EGP/USD
+                    = {Math.round(silver.spot.pricePerGramUSD * silver.usdEgpRate * (1 + draftSettings.metal.markupPct / 100))} EGP/g effective
+                  </p>
+                )}
+              </div>
+
+              {/* Manufacturing */}
+              <div>
+                <p className="text-xs font-semibold text-zinc-700 mb-2">Manufacturing</p>
+                <div className="flex gap-2 mb-2">
+                  <button type="button"
+                    onClick={() => setDraftSettings((s) => ({ ...s, manufacturing: { ...s.manufacturing, mode: "percentage" } }))}
+                    className={`flex-1 text-xs py-1.5 rounded-xl border transition-colors ${draftSettings.manufacturing.mode === "percentage" ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500"}`}>
+                    % of Metal
+                  </button>
+                  <button type="button"
+                    onClick={() => setDraftSettings((s) => ({ ...s, manufacturing: { ...s.manufacturing, mode: "per_gram" } }))}
+                    className={`flex-1 text-xs py-1.5 rounded-xl border transition-colors ${draftSettings.manufacturing.mode === "per_gram" ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500"}`}>
+                    Fixed per gram
+                  </button>
+                </div>
+                {draftSettings.manufacturing.mode === "percentage" ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-500 w-28 shrink-0">Percentage</span>
+                    <input type="number" min="0" step="1"
+                      value={draftSettings.manufacturing.pct}
+                      onChange={(e) => setDraftSettings((s) => ({ ...s, manufacturing: { ...s.manufacturing, pct: parseFloat(e.target.value) || 0 } }))}
+                      className="flex-1 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zinc-400" />
+                    <span className="text-xs text-zinc-400">% of metal</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-500 w-28 shrink-0">Per gram</span>
+                    <input type="number" min="0" step="0.5"
+                      value={draftSettings.manufacturing.perGram}
+                      onChange={(e) => setDraftSettings((s) => ({ ...s, manufacturing: { ...s.manufacturing, perGram: parseFloat(e.target.value) || 0 } }))}
+                      className="flex-1 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zinc-400" />
+                    <span className="text-xs text-zinc-400">EGP/g</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Plating */}
+              <div>
+                <p className="text-xs font-semibold text-zinc-700 mb-2">Plating (by product type)</p>
+                <div className="space-y-1.5">
+                  {CATEGORIES.map((cat) => (
+                    <div key={cat} className="flex items-center gap-2">
+                      <span className="text-xs text-zinc-500 w-28 shrink-0">{cat}</span>
+                      <input type="number" min="0" step="1"
+                        value={draftSettings.plating[cat] ?? 0}
+                        onChange={(e) => setDraftSettings((s) => ({ ...s, plating: { ...s.plating, [cat]: parseFloat(e.target.value) || 0 } }))}
+                        className="flex-1 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zinc-400" />
+                      <span className="text-xs text-zinc-400">EGP</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Packaging */}
+              <div>
+                <p className="text-xs font-semibold text-zinc-700 mb-2">Packaging</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-500 w-28 shrink-0">Fixed per item</span>
+                  <input type="number" min="0" step="1"
+                    value={draftSettings.packaging.fixed}
+                    onChange={(e) => setDraftSettings((s) => ({ ...s, packaging: { fixed: parseFloat(e.target.value) || 0 } }))}
+                    className="flex-1 border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-zinc-400" />
+                  <span className="text-xs text-zinc-400">EGP</span>
+                </div>
+              </div>
+
+              {/* Stone */}
+              <div className="bg-zinc-50 rounded-xl p-3">
+                <p className="text-xs font-semibold text-zinc-700 mb-1">Stone</p>
+                <p className="text-[10px] text-zinc-400">
+                  Auto-filled from the average stone cost of existing items with the same base SKU.
+                  No manual setting needed.
+                </p>
+              </div>
+
+              <button
+                disabled={settingsSaving}
+                onClick={async () => {
+                  setSettingsSaving(true);
+                  await fetch("/api/inventory/settings", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(draftSettings),
+                  });
+                  setCostSettings(draftSettings);
+                  setSettingsSaving(false);
+                  setShowSettings(false);
+                }}
+                className="w-full bg-zinc-900 text-white rounded-xl py-3 text-sm font-medium hover:bg-zinc-700 disabled:opacity-40 flex items-center justify-center gap-2">
+                {settingsSaving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                {settingsSaving ? "Saving…" : "Save Settings"}
+              </button>
             </div>
           </div>
         </div>
@@ -1109,14 +1314,22 @@ export default function InventoryPage() {
 
               {/* Cost Breakdown */}
               <div>
-                <label className="text-xs font-medium text-zinc-600 block mb-2">Cost Breakdown (EGP)</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-medium text-zinc-600">Cost Breakdown (EGP)</label>
+                  {!editItem && silver?.spot && (
+                    <span className="flex items-center gap-1 text-[10px] text-emerald-600">
+                      <Zap size={10} /> auto-filled from settings
+                    </span>
+                  )}
+                </div>
                 <div className="space-y-1.5">
                   {([
-                    { key: "metalCostEGP", label: "Metal" },
+                    { key: "metalCostEGP", label: "Metal (925)" },
                     { key: "platingCostEGP", label: "Plating" },
                     { key: "stoneCostEGP", label: "Stone" },
                     { key: "manufacturingCostEGP", label: "Manufacturing" },
                     { key: "transportationCostEGP", label: "Transportation" },
+                    { key: "packagingCostEGP", label: "Packaging" },
                   ] as { key: keyof typeof form; label: string }[]).map(({ key, label }) => (
                     <div key={key} className="flex items-center gap-2">
                       <span className="text-xs text-zinc-500 w-28 shrink-0">{label}</span>
@@ -1128,7 +1341,7 @@ export default function InventoryPage() {
                     </div>
                   ))}
                   {(() => {
-                    const total = [form.metalCostEGP, form.platingCostEGP, form.stoneCostEGP, form.manufacturingCostEGP, form.transportationCostEGP]
+                    const total = [form.metalCostEGP, form.platingCostEGP, form.stoneCostEGP, form.manufacturingCostEGP, form.transportationCostEGP, form.packagingCostEGP]
                       .reduce((s, v) => s + (parseFloat(v) || 0), 0);
                     return total > 0 ? (
                       <div className="flex items-center justify-between pt-2 border-t border-zinc-100 mt-1">
