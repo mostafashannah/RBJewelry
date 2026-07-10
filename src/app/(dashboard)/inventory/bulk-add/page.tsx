@@ -161,6 +161,8 @@ function ItemCard({ index, shopifyGroups, skuMeta, silver, settings, status, onR
           sku: matched?.sku ?? f.sku,
           priceEGP: matched?.price ? String(matched.price) : f.priceEGP,
           weightG: (!weightEditedRef.current && matched?.weightG) ? String(matched.weightG) : f.weightG,
+          colors: selectedOpt2 ? [selectedOpt2] : (f.colors.length ? f.colors : []),
+          size: selectedOpt1 || f.size,
         }));
         setPhotoUrl((prev) => prev ?? group.imageUrl ?? null);
       }
@@ -382,11 +384,11 @@ function ItemCard({ index, shopifyGroups, skuMeta, silver, settings, status, onR
             </div>
           )}
 
-          {/* Colors (manual toggle for existing) */}
+          {/* Colors (stored) */}
           <div>
             <label className="text-xs text-zinc-500 font-medium block mb-1">Colors (stored)</label>
             <div className="flex flex-wrap gap-1.5">
-              {COLORS_LIST.map((color) => (
+              {(addMode === "existing" && allOpt2s.length > 0 ? allOpt2s : COLORS_LIST).map((color) => (
                 <button key={color} type="button" onClick={() => toggleColor(color)}
                   className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${form.colors.includes(color) ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 text-zinc-500"}`}>
                   {color}
