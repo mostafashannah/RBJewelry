@@ -590,11 +590,16 @@ export default function InventoryPage() {
               <p className="text-[10px] text-zinc-400">{(silver.pureSilverG / 31.1035).toFixed(2)} troy oz</p>
             </div>
             <div>
-              <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Metal Value (USD)</p>
+              <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Metal Value (EGP)</p>
               {silver.spot ? (
                 <>
-                  <p className="text-base font-semibold text-zinc-900">${silver.spot.silverValueUSD.toLocaleString()}</p>
-                  <p className="text-[10px] text-zinc-400">${silver.spot.pricePerOzUSD}/oz · ${silver.spot.pricePerGramUSD}/g</p>
+                  <p className="text-base font-semibold text-zinc-900">
+                    {Math.round(silver.spot.silverValueUSD * (silver.usdEgpRate ?? costSettings.usdEgpRate)).toLocaleString()} EGP
+                  </p>
+                  <p className="text-[10px] text-zinc-400">
+                    {Math.round(silver.spot.pricePerGramUSD * (silver.usdEgpRate ?? costSettings.usdEgpRate))} EGP/g
+                    {!silver.usdEgpRate && " (est.)"}
+                  </p>
                 </>
               ) : (
                 <p className="text-xs text-zinc-400 mt-1">Price unavailable</p>
