@@ -358,6 +358,15 @@ async function upsertOrderNode(node: OrderNode) {
       createdAt: new Date(node.createdAt),
     },
   });
+
+  // Auto-mark inventory items as SOLD when the order is paid
+  if (payment.toLowerCase().includes("paid")) {
+    const orderNum = node.name.replace("#", "");
+    await db.inventoryItem.updateMany({
+      where: { orderNo: orderNum, status: { not: "SOLD" } },
+      data: { status: "SOLD" },
+    });
+  }
 }
 
 export async function syncOrdersToCache() {

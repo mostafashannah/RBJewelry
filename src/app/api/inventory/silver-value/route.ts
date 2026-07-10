@@ -5,6 +5,22 @@ import { db } from "@/lib/db";
 const TROY_OZ_PER_GRAM = 1 / 31.1035;
 const SILVER_PURITY = 0.925;
 
+async function fetchUsdEgpRate(): Promise<number | null> {
+  const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36";
+  try {
+    const r = await fetch(
+      "https://query1.finance.yahoo.com/v7/finance/quote?symbols=USDEGP%3DX&fields=regularMarketPrice",
+      { headers: { "User-Agent": UA, "Accept": "application/json" } }
+    );
+    if (r.ok) {
+      const data = await r.json() as { quoteResponse?: { result?: { regularMarketPrice?: number }[] } };
+      const rate = data?.quoteResponse?.result?.[0]?.regularMarketPrice;
+      if (rate && rate > 0) return rate;
+    }
+  } catch { /* fail */ }
+  return null;
+}
+
 async function fetchSilverPrice(): Promise<number | null> {
   const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36";
 
@@ -50,16 +66,17 @@ async function fetchSilverPrice(): Promise<number | null> {
 }
 
 export async function GET() {
-  const [items, soldItems, pricePerOz] = await Promise.all([
+  const [items, soldItems, pricePerOz, usdEgpRate] = await Promise.all([
     db.inventoryItem.findMany({
       where: { status: "IN_STOCK", material: { contains: "Silver" } },
       select: { weightG: true, quantity: true, priceEGP: true },
     }),
     db.inventoryItem.findMany({
       where: { status: "SOLD" },
-      select: { weightG: true, quantity: true, costEGP: true },
+      select: { weightG: true, quantity: true, costEGP: true, priceEGP: true },
     }),
     fetchSilverPrice(),
+    fetchUsdEgpRate(),
   ]);
 
   const totalWeightG = items.reduce((s, i) => s + i.weightG * i.quantity, 0);
@@ -75,6 +92,14 @@ export async function GET() {
   const soldTotalCostEGP = soldItems
     .filter((i) => i.costEGP != null)
     .reduce((s, i) => s + (i.costEGP ?? 0) * i.quantity, 0);
+  const soldTotalPriceEGP = soldItems
+    .filter((i) => i.priceEGP != null)
+    .reduce((s, i) => s + (i.priceEGP ?? 0) * i.quantity, 0);
+
+  // Metal cost = weight × 92.5% purity × spot price per gram (USD) × USD/EGP rate
+  const soldMetalCostEGP = (pricePerGram && usdEgpRate)
+    ? soldTotalWeightG * SILVER_PURITY * pricePerGram * usdEgpRate
+    : null;
 
   return NextResponse.json({
     totalItems: items.length,
@@ -88,8 +113,11 @@ export async function GET() {
           silverValueUSD: Math.round((silverValueUSD ?? 0) * 100) / 100,
         }
       : null,
+    usdEgpRate,
     soldItems: soldItems.length,
     soldTotalWeightG: Math.round(soldTotalWeightG * 100) / 100,
     soldTotalCostEGP: Math.round(soldTotalCostEGP),
+    soldTotalPriceEGP: Math.round(soldTotalPriceEGP),
+    soldMetalCostEGP: soldMetalCostEGP != null ? Math.round(soldMetalCostEGP) : null,
   });
 }

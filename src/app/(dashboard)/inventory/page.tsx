@@ -104,7 +104,10 @@ interface SilverData {
   totalItems: number; totalWeightG: number; pureSilverG: number;
   totalListingValueEGP: number;
   spot: { pricePerOzUSD: number; pricePerGramUSD: number; silverValueUSD: number } | null;
+  usdEgpRate: number | null;
   soldItems: number; soldTotalWeightG: number; soldTotalCostEGP: number;
+  soldTotalPriceEGP: number;
+  soldMetalCostEGP: number | null;
 }
 
 const emptyForm = {
@@ -132,6 +135,7 @@ export default function InventoryPage() {
   const [silverLoading, setSilverLoading] = useState(false);
   const [view, setView] = useState<"grid" | "list">("list");
   const fileRef = useRef<HTMLInputElement>(null);
+  const weightManuallyEditedRef = useRef(false);
 
   // Import sheet state
   const [showImport, setShowImport] = useState(false);
@@ -298,6 +302,7 @@ export default function InventoryPage() {
     setShopifySuggestions([]); setShowSuggestions(false);
     setAddMode("existing"); setSelectedProduct(null); setSelectedColorCode(""); setSelectedSize("");
     setSelectedBaseName(""); setSelectedOpt1(""); setSelectedOpt2("");
+    weightManuallyEditedRef.current = false;
     fetchSkuMeta();
     setShowAdd(true);
   };
@@ -333,8 +338,11 @@ export default function InventoryPage() {
           name: selectedBaseName,
           sku: matched?.sku ?? f.sku,
           priceEGP: matched?.price ? String(matched.price) : f.priceEGP,
-          weightG: matched?.weightG ? String(matched.weightG) : f.weightG,
+          // Only use Shopify weight if user hasn't manually edited the field
+          weightG: (!weightManuallyEditedRef.current && matched?.weightG) ? String(matched.weightG) : f.weightG,
         }));
+        // Auto-fill photo from Shopify product if none uploaded yet
+        setPhotoUrl((prev) => prev ?? group.imageUrl ?? null);
       }
       return;
     }
@@ -368,7 +376,18 @@ export default function InventoryPage() {
     setSaving(true);
     const totalCost = [form.metalCostEGP, form.platingCostEGP, form.stoneCostEGP, form.manufacturingCostEGP, form.transportationCostEGP]
       .reduce((s, v) => s + (parseFloat(v) || 0), 0);
-    const body = { ...form, photoUrl, costEGP: totalCost > 0 ? String(totalCost) : "" };
+
+    // Auto-fetch photo from Shopify product cache by SKU if none provided
+    let resolvedPhotoUrl = photoUrl;
+    if (!resolvedPhotoUrl && form.sku && skuMeta?.shopifyProducts) {
+      const baseSku = form.sku.split("-")[0];
+      const matchedProduct = skuMeta.shopifyProducts.find((p) =>
+        p.variants.some((v) => v.sku && (v.sku === form.sku || v.sku.startsWith(baseSku + "-") || v.sku === baseSku))
+      );
+      if (matchedProduct?.imageUrl) resolvedPhotoUrl = matchedProduct.imageUrl;
+    }
+
+    const body = { ...form, photoUrl: resolvedPhotoUrl, costEGP: totalCost > 0 ? String(totalCost) : "" };
     if (editItem) {
       await fetch(`/api/inventory/${editItem.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -518,7 +537,7 @@ export default function InventoryPage() {
             <ShoppingBag size={14} className="text-zinc-400" />
             <span className="text-xs font-medium text-zinc-700">Sold Items Summary</span>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Items Sold</p>
               <p className="text-base font-semibold text-zinc-900">{silver.soldItems.toLocaleString()}</p>
@@ -530,9 +549,23 @@ export default function InventoryPage() {
               <p className="text-[10px] text-zinc-400">silver used</p>
             </div>
             <div>
-              <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Total Metal Cost</p>
-              <p className="text-base font-semibold text-zinc-900">{silver.soldTotalCostEGP.toLocaleString()} EGP</p>
-              <p className="text-[10px] text-zinc-400">cost of goods sold</p>
+              <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Metal Cost (925)</p>
+              {silver.soldMetalCostEGP != null ? (
+                <>
+                  <p className="text-base font-semibold text-zinc-900">{silver.soldMetalCostEGP.toLocaleString()} EGP</p>
+                  <p className="text-[10px] text-zinc-400">weight × 92.5% × spot{silver.usdEgpRate ? ` × ${silver.usdEgpRate.toFixed(0)}` : ""}</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-base font-semibold text-zinc-900">{silver.soldTotalCostEGP.toLocaleString()} EGP</p>
+                  <p className="text-[10px] text-zinc-400">recorded cost (spot unavailable)</p>
+                </>
+              )}
+            </div>
+            <div>
+              <p className="text-[10px] text-zinc-400 uppercase tracking-wide">Total Revenue</p>
+              <p className="text-base font-semibold text-emerald-700">{silver.soldTotalPriceEGP.toLocaleString()} EGP</p>
+              <p className="text-[10px] text-zinc-400">total selling price</p>
             </div>
           </div>
         </div>
@@ -1055,7 +1088,7 @@ export default function InventoryPage() {
                 <div>
                   <label className="text-xs font-medium text-zinc-600 block mb-1">Weight (g) *</label>
                   <input type="number" step="0.1" min="0" value={form.weightG}
-                    onChange={(e) => setForm({ ...form, weightG: e.target.value })} placeholder="e.g. 4.5"
+                    onChange={(e) => { weightManuallyEditedRef.current = true; setForm({ ...form, weightG: e.target.value }); }} placeholder="e.g. 4.5"
                     className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-zinc-400" />
                 </div>
                 {editItem && (
