@@ -624,9 +624,9 @@ export default function InventoryPage() {
               {silver.spot ? (
                 <>
                   <p className="text-base font-semibold text-zinc-900">
-                    {Math.round(silver.spot.pricePerGramUSD * 0.925 * (silver.usdEgpRate ?? costSettings.usdEgpRate) * (1 + costSettings.metal.markupPct / 100))} EGP
+                    {Math.round(silver.spot.pricePerGramUSD * 0.925 * (silver.usdEgpRate ?? costSettings.usdEgpRate))} EGP
                   </p>
-                  <p className="text-[10px] text-zinc-400">per gram (925 + {costSettings.metal.markupPct}% markup){!silver.usdEgpRate && " (est.)"}</p>
+                  <p className="text-[10px] text-zinc-400">per gram (925 silver){!silver.usdEgpRate && " (est.)"}</p>
                 </>
               ) : (
                 <p className="text-xs text-zinc-400 mt-1">Price unavailable</p>
