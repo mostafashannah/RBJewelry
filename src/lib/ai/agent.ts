@@ -8,6 +8,7 @@ import { sendWhatsAppMessage, sendWhatsAppImage } from "@/lib/meta/whatsapp";
 import { sendFacebookDM, sendFacebookImage, replyToFacebookComment } from "@/lib/meta/facebook";
 import { resolveWhatsAppMediaUrl, downloadAsBase64 } from "@/lib/meta/media";
 import { lookupOrders } from "@/lib/shopify/admin";
+import { sendSocialFlowReply } from "@/lib/socialflow/send";
 import { Platform, Direction } from "@prisma/client";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
@@ -354,7 +355,7 @@ export async function processInboundMessage(conversationId: string, inboundMessa
   }
 
   // Image tool only for DM platforms; order status tool when not handled by pre-flight
-  const canSendImages = ([Platform.WHATSAPP, Platform.INSTAGRAM_DM, Platform.FACEBOOK_DM] as Platform[]).includes(
+  const canSendImages = !conversation.viaSocialFlow && ([Platform.WHATSAPP, Platform.INSTAGRAM_DM, Platform.FACEBOOK_DM] as Platform[]).includes(
     conversation.platform
   );
   const activeTools = (canSendImages ? TOOLS : TOOLS.filter((t) => t.name !== "send_product_image"))
@@ -574,7 +575,15 @@ export async function processInboundMessage(conversationId: string, inboundMessa
   });
 
   try {
-    if (conversation.platform === Platform.INSTAGRAM_DM) {
+    if (conversation.viaSocialFlow) {
+      const isComment = conversation.platform === Platform.INSTAGRAM_COMMENT || conversation.platform === Platform.FACEBOOK_COMMENT;
+      await sendSocialFlowReply({
+        platform: conversation.platform,
+        externalId: conversation.externalId,
+        isComment,
+        message: replyText,
+      });
+    } else if (conversation.platform === Platform.INSTAGRAM_DM) {
       await sendInstagramDM(conversation.externalId, replyText);
     } else if (conversation.platform === Platform.INSTAGRAM_COMMENT) {
       await replyToInstagramComment(conversation.externalId, replyText);

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendFacebookDM, replyToFacebookComment } from "@/lib/meta/facebook";
+import { sendSocialFlowReply } from "@/lib/socialflow/send";
 import { Direction, Platform } from "@prisma/client";
 
 export async function POST(req: NextRequest) {
@@ -14,7 +15,14 @@ export async function POST(req: NextRequest) {
   if (!conversation) return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
 
   try {
-    if (conversation.platform === Platform.FACEBOOK_DM) {
+    if (conversation.viaSocialFlow) {
+      await sendSocialFlowReply({
+        platform: conversation.platform,
+        externalId: conversation.externalId,
+        isComment: conversation.platform === Platform.FACEBOOK_COMMENT,
+        message,
+      });
+    } else if (conversation.platform === Platform.FACEBOOK_DM) {
       await sendFacebookDM(conversation.externalId, message);
     } else if (conversation.platform === Platform.FACEBOOK_COMMENT) {
       await replyToFacebookComment(conversation.externalId, message);
