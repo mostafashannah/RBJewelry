@@ -54,7 +54,6 @@ model Conversation {
   lastMessageAt DateTime           @default(now())
   unreadCount   Int                @default(0)
   status        ConversationStatus @default(OPEN)
-  viaSocialFlow Boolean            @default(false)
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
