@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { sendInstagramDM, replyToInstagramComment } from "@/lib/meta/instagram";
+import { sendSocialFlowReply } from "@/lib/socialflow/send";
 import { db } from "@/lib/db";
 import { Direction } from "@prisma/client";
 import { z } from "zod";
@@ -21,7 +22,22 @@ export async function POST(req: NextRequest) {
   const conversation = await db.conversation.findUnique({ where: { id: conversationId } });
   if (!conversation) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  if (type === "dm") {
+  if (conversation.viaSocialFlow) {
+    let commentExternalId: string | null = null;
+    if (type === "comment") {
+      const lastComment = await db.message.findFirst({
+        where: { conversationId, externalMsgId: { not: null } },
+        orderBy: { sentAt: "desc" },
+      });
+      commentExternalId = lastComment?.externalMsgId ?? null;
+    }
+    await sendSocialFlowReply({
+      channel: type === "dm" ? "instagram" : "ig_comment",
+      recipientId: type === "dm" ? conversation.externalId : null,
+      externalId: commentExternalId,
+      message,
+    });
+  } else if (type === "dm") {
     await sendInstagramDM(conversation.externalId, message);
   } else {
     await replyToInstagramComment(conversation.externalId, message);

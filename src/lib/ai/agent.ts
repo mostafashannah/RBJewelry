@@ -8,6 +8,8 @@ import { sendWhatsAppMessage, sendWhatsAppImage } from "@/lib/meta/whatsapp";
 import { sendFacebookDM, sendFacebookImage, replyToFacebookComment } from "@/lib/meta/facebook";
 import { resolveWhatsAppMediaUrl, downloadAsBase64 } from "@/lib/meta/media";
 import { lookupOrders } from "@/lib/shopify/admin";
+import { sendSocialFlowReply } from "@/lib/socialflow/send";
+import { platformToSocialFlowChannel } from "@/lib/socialflow/channel";
 import { Platform, Direction } from "@prisma/client";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
@@ -574,7 +576,22 @@ export async function processInboundMessage(conversationId: string, inboundMessa
   });
 
   try {
-    if (conversation.platform === Platform.INSTAGRAM_DM) {
+    if (conversation.viaSocialFlow) {
+      const channel = platformToSocialFlowChannel(conversation.platform);
+      if (channel) {
+        let socialFlowExternalId: string | null = null;
+        if (conversation.platform === Platform.INSTAGRAM_COMMENT || conversation.platform === Platform.FACEBOOK_COMMENT) {
+          const inbound = await db.message.findUnique({ where: { id: inboundMessageId } });
+          socialFlowExternalId = inbound?.externalMsgId ?? null;
+        }
+        await sendSocialFlowReply({
+          channel,
+          recipientId: conversation.externalId,
+          externalId: socialFlowExternalId,
+          message: replyText,
+        });
+      }
+    } else if (conversation.platform === Platform.INSTAGRAM_DM) {
       await sendInstagramDM(conversation.externalId, replyText);
     } else if (conversation.platform === Platform.INSTAGRAM_COMMENT) {
       await replyToInstagramComment(conversation.externalId, replyText);

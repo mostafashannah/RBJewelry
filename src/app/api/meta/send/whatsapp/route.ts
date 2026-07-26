@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { sendWhatsAppMessage } from "@/lib/meta/whatsapp";
+import { sendSocialFlowReply } from "@/lib/socialflow/send";
 import { db } from "@/lib/db";
 import { Direction } from "@prisma/client";
 import { z } from "zod";
@@ -20,7 +21,15 @@ export async function POST(req: NextRequest) {
   const conversation = await db.conversation.findUnique({ where: { id: conversationId } });
   if (!conversation) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  await sendWhatsAppMessage(conversation.externalId, message);
+  if (conversation.viaSocialFlow) {
+    await sendSocialFlowReply({
+      channel: "whatsapp",
+      recipientId: conversation.externalId,
+      message,
+    });
+  } else {
+    await sendWhatsAppMessage(conversation.externalId, message);
+  }
 
   await db.message.create({
     data: { conversationId, direction: Direction.OUTBOUND, body: message, isAiGenerated: false },
