@@ -23,6 +23,7 @@ jobs:
       - name: Write .env.local from secrets
         run: |
           cat > .env.local <<ENVEOF
+          APP_URL="${{ secrets.APP_URL || 'https://rbjewelry.store' }}"
           DATABASE_URL="${{ secrets.DATABASE_URL }}"
           ANTHROPIC_API_KEY="${{ secrets.ANTHROPIC_API_KEY }}"
           SHOPIFY_STORE_DOMAIN="${{ secrets.SHOPIFY_STORE_DOMAIN }}"

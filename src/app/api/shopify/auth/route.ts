@@ -5,7 +5,8 @@ import { db } from "@/lib/db";
 const CLIENT_ID = process.env.SHOPIFY_CLIENT_ID!;
 const CLIENT_SECRET = process.env.SHOPIFY_CLIENT_SECRET!;
 const SHOP = process.env.SHOPIFY_STORE_DOMAIN!;
-const REDIRECT_URI = "https://app.rbjewelry.net/api/shopify/auth";
+const APP_URL = process.env.APP_URL ?? "https://rbjewelry.store";
+const REDIRECT_URI = `${APP_URL}/api/shopify/auth`;
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
@@ -61,7 +62,7 @@ export async function GET(req: NextRequest) {
     "products/update",
     "products/delete",
   ];
-  const webhookEndpoint = "https://app.rbjewelry.net/api/webhooks/shopify";
+  const webhookEndpoint = `${APP_URL}/api/webhooks/shopify`;
   for (const topic of webhookTopics) {
     await fetch(`https://${SHOP}/admin/api/2024-10/webhooks.json`, {
       method: "POST",
