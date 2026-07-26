@@ -35,10 +35,20 @@ mcp.stdout.on('data', (chunk) => {
 mcp.on('error', (err) => { console.error('MCP error:', err); process.exit(1); });
 mcp.on('close', (code) => { if (code !== 0 && pending.size > 0) { console.error('MCP exited with code', code); process.exit(1); } });
 
-const send = (method, params) => new Promise((resolve) => {
+const SEND_TIMEOUT_MS = 90000;
+
+const send = (method, params) => new Promise((resolve, reject) => {
   msgId++;
-  pending.set(msgId, resolve);
-  mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: msgId, method, params }) + '\n');
+  const id = msgId;
+  const timer = setTimeout(() => {
+    pending.delete(id);
+    reject(new Error(`Timed out after ${SEND_TIMEOUT_MS / 1000}s waiting for response to "${method}"`));
+  }, SEND_TIMEOUT_MS);
+  pending.set(id, (msg) => {
+    clearTimeout(timer);
+    resolve(msg);
+  });
+  mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
 });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
