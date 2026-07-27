@@ -10,11 +10,20 @@ import { sendPushNotification } from "@/lib/push";
 interface SocialFlowThreadEntry {
   direction: "in" | "out";
   message_text: string;
+  attachment_url: string | null;
   created_at: string;
 }
 
 function parseSocialFlowDate(s: string): Date {
   return new Date(s.replace(" ", "T") + "Z");
+}
+
+// Mirrors the convention used by the direct Meta webhooks (instagram/facebook/whatsapp routes):
+// keep real text as-is, otherwise fall back to a placeholder body when an image is attached.
+function resolveBody(text: string | null | undefined, attachmentUrl: string | null | undefined): string {
+  const trimmed = text?.trim();
+  if (trimmed && trimmed !== "[Image]") return trimmed;
+  return attachmentUrl ? "أرسل العميل صورة / Customer sent a photo" : (trimmed ?? "");
 }
 
 export async function POST(req: NextRequest) {
@@ -78,7 +87,8 @@ export async function POST(req: NextRequest) {
           data: {
             conversationId: conversation.id,
             direction: entry.direction === "out" ? Direction.OUTBOUND : Direction.INBOUND,
-            body: entry.message_text ?? "",
+            body: resolveBody(entry.message_text, entry.attachment_url),
+            mediaUrl: entry.attachment_url ?? undefined,
             externalMsgId: isLast && externalId ? externalId : undefined,
             sentAt: parseSocialFlowDate(entry.created_at),
           },
@@ -93,7 +103,8 @@ export async function POST(req: NextRequest) {
           data: {
             conversationId: conversation.id,
             direction: Direction.INBOUND,
-            body: last.message_text ?? "",
+            body: resolveBody(last.message_text, last.attachment_url),
+            mediaUrl: last.attachment_url ?? undefined,
             externalMsgId: externalId ?? undefined,
             sentAt: parseSocialFlowDate(last.created_at),
           },
